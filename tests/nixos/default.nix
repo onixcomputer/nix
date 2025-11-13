@@ -206,6 +206,8 @@ in
 
   chrootStore = runNixOSTest ./chroot-store.nix;
 
+  radicle-fetch = runNixOSTest ./radicle-fetch.nix;
+
   storeRemount = runNixOSTest ./store-remount.nix;
 
   upgrade-nix = runNixOSTest {
