@@ -244,10 +244,21 @@ TEST(RadicleValidation, invalidRIDs)
     }
 }
 
-// Test that Radicle inputs are locked when they have a rev
-TEST(RadicleInput, isLocked)
+// Test fixture for RadicleInput tests that need proper initialization
+class RadicleInputTest : public ::testing::Test
 {
-    experimentalFeatureSettings.experimentalFeatures.get().insert(Xp::Radicle);
+protected:
+    void SetUp() override
+    {
+        initLibStore(/*loadConfig=*/false);
+        // Enable Radicle experimental feature for tests
+        experimentalFeatureSettings.experimentalFeatures.get().insert(Xp::Radicle);
+    }
+};
+
+// Test that Radicle inputs are locked when they have a rev
+TEST_F(RadicleInputTest, isLocked)
+{
     fetchers::Settings fetchSettings;
 
     // Input without rev is not locked
@@ -271,9 +282,8 @@ TEST(RadicleInput, isLocked)
 }
 
 // Test fingerprint generation
-TEST(RadicleInput, fingerprint)
+TEST_F(RadicleInputTest, fingerprint)
 {
-    experimentalFeatureSettings.experimentalFeatures.get().insert(Xp::Radicle);
     fetchers::Settings fetchSettings;
 
     auto store = [] {
