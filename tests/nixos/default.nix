@@ -210,4 +210,6 @@ in
   fetchersSubstitute = runNixOSTest ./fetchers-substitute.nix;
 
   chrootStore = runNixOSTest ./chroot-store.nix;
+
+  radicle-fetch = runNixOSTest ./radicle-fetch.nix;
 }

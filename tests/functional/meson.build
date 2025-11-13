@@ -61,6 +61,7 @@ suites = [
       'characterisation-test-infra.sh',
       'experimental-features.sh',
       'fetchMercurial.sh',
+      'fetchRadicle.sh',
       'gc-auto.sh',
       'user-envs.sh',
       'user-envs-migration.sh',
