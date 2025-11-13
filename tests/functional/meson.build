@@ -101,6 +101,7 @@ suites = [
       'fetchGitSubmodules.sh',
       'fetchGitVerification.sh',
       'fetchMercurial.sh',
+      'fetchRadicle.sh',
       'fetchPath.sh',
       'fetchTree-file.sh',
       'fetchurl.sh',
