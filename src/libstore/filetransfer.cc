@@ -580,10 +580,16 @@ struct curlFileTransfer : public FileTransfer
             curl_easy_setopt(req, CURLOPT_URL, request.uri.to_string().c_str());
 
             /* Enable transparent decompression for downloads.
-               Skip for uploads (Accept-Encoding is meaningless when sending data)
-               and when resuming from an offset (byte ranges don't work with
-               compressed content). */
-            if (writtenToSink == 0 && !request.data)
+               Skip for uploads (Accept-Encoding is meaningless when sending data),
+               when resuming from an offset (byte ranges don't work with compressed
+               content), and for S3 SigV4 requests where signed Accept-Encoding
+               headers can be modified in transit by S3-compatible services.
+               See https://github.com/NixOS/nix/issues/15019 */
+            auto enableTransparentDecompression = writtenToSink == 0 && !request.data;
+#if NIX_WITH_AWS_AUTH
+            enableTransparentDecompression = enableTransparentDecompression && !request.awsSigV4Provider;
+#endif
+            if (enableTransparentDecompression)
                 /* Empty string means to enable all supported (that libcurl has
                    been linked to support) encodings. */
                 curl_easy_setopt(req, CURLOPT_ACCEPT_ENCODING, "");
