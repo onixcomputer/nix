@@ -674,6 +674,10 @@ struct curlFileTransfer : public FileTransfer
             /* Don't reuse idle connections older than 90s. */
             curl_easy_setopt(req, CURLOPT_MAXAGE_CONN, 90L);
 
+            curl_easy_setopt(req, CURLOPT_TCP_KEEPALIVE, 1L);
+            curl_easy_setopt(req, CURLOPT_TCP_KEEPIDLE, 60L);
+            curl_easy_setopt(req, CURLOPT_TCP_KEEPINTVL, 60L);
+
             curl_easy_setopt(req, CURLOPT_LOW_SPEED_LIMIT, 1L);
             curl_easy_setopt(req, CURLOPT_LOW_SPEED_TIME, fileTransfer.settings.stalledDownloadTimeout.get());
 
