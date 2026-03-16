@@ -2,6 +2,7 @@
 #include "nix/store/profiles.hh"
 #include "nix/util/config-impl.hh"
 #include "nix/util/config-global.hh"
+#include "nix/util/file-system.hh"
 #include "nix/util/current-process.hh"
 #include "nix/util/executable-path.hh"
 #include "nix/util/args.hh"
@@ -395,6 +396,8 @@ PathsInChroot BaseSetting<PathsInChroot>::parse(const std::string & str) const
             inside = i.substr(0, p);
             outside = i.substr(p + 1);
         }
+        if (!optional && !pathExists(outside))
+            throw Error("path '%s' is configured as part of the `sandbox-paths` setting, but does not exist", outside);
         pathsInChroot[inside] = {.source = outside, .optional = optional};
     }
     return pathsInChroot;
