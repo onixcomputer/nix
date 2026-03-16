@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <cstring>
+#include <unordered_set>
 #include <sstream>
 #include <regex>
 
@@ -3336,6 +3337,165 @@ static RegisterPrimOp primop_listToAttrs({
       ```
     )",
     .fun = prim_listToAttrs,
+});
+
+/* Merge a list of attrsets into one, with later elements taking priority.
+   Equivalent to `foldl' (a: b: a // b) {} list` but performs a single
+   allocation and avoids quadratic copying.
+
+   Three strategies based on input size:
+   - 2 inputs: direct sorted merge (same algorithm as the // operator)
+   - small totals (< 128 attrs): collect + sort + dedup, no hash set
+   - large totals: hash set for O(1) dedup, then sort */
+static void prim_mergeAttrsList(EvalState & state, const PosIdx pos, Value ** args, Value & v)
+{
+    state.forceList(*args[0], pos, "while evaluating the argument passed to builtins.mergeAttrsList");
+
+    auto listView = args[0]->listView();
+    auto listSize = listView.size();
+
+    if (listSize == 0) {
+        v.mkAttrs(&Bindings::emptyBindings);
+        return;
+    }
+
+    if (listSize == 1) {
+        state.forceAttrs(*listView[0], pos,
+            "while evaluating an element of the list passed to builtins.mergeAttrsList");
+        v = *listView[0];
+        return;
+    }
+
+    // Force all elements and compute total attribute count.
+    size_t totalAttrs = 0;
+    for (size_t i = 0; i < listSize; i++) {
+        state.forceAttrs(*listView[i], pos,
+            "while evaluating an element of the list passed to builtins.mergeAttrsList");
+        totalAttrs += listView[i]->attrs()->size();
+    }
+
+    if (totalAttrs == 0) {
+        v.mkAttrs(&Bindings::emptyBindings);
+        return;
+    }
+
+    // ── Fast path: 2 inputs ──────────────────────────────────────────
+    // Direct sorted merge — same algorithm as the // operator.
+    // No hash set, no sort, no temporary vector.  O(n + m).
+    if (listSize == 2) {
+        auto & b1 = *listView[0]->attrs();
+        auto & b2 = *listView[1]->attrs();
+
+        auto attrs = state.buildBindings(b1.size() + b2.size());
+        auto i = b1.begin();
+        auto j = b2.begin();
+
+        while (i != b1.end() && j != b2.end()) {
+            if (i->name == j->name) {
+                attrs.insert(*j); // right wins
+                ++i; ++j;
+            } else if (i->name < j->name) {
+                attrs.insert(*i); ++i;
+            } else {
+                attrs.insert(*j); ++j;
+            }
+        }
+        while (i != b1.end()) { attrs.insert(*i); ++i; }
+        while (j != b2.end()) { attrs.insert(*j); ++j; }
+
+        v.mkAttrs(attrs.alreadySorted());
+        return;
+    }
+
+    // ── Small path: collect + sort + dedup ───────────────────────────
+    // For small totals the sort is cheap and we avoid hash set overhead
+    // (~56 bytes/entry for bucket + node + hash).
+    if (totalAttrs < 128) {
+        struct TaggedAttr {
+            Attr attr;
+            uint32_t priority; // list index; higher = wins
+        };
+        std::vector<TaggedAttr> all;
+        all.reserve(totalAttrs);
+
+        for (size_t i = 0; i < listSize; i++)
+            for (auto & a : *listView[i]->attrs())
+                all.push_back({a, static_cast<uint32_t>(i)});
+
+        // Sort by name, then by priority descending (highest first).
+        std::sort(all.begin(), all.end(), [](const TaggedAttr & a, const TaggedAttr & b) {
+            if (a.attr.name != b.attr.name)
+                return a.attr.name < b.attr.name;
+            return a.priority > b.priority;
+        });
+
+        // Count unique names.
+        size_t unique = 0;
+        for (size_t i = 0; i < all.size(); i++)
+            if (i == 0 || all[i].attr.name != all[i - 1].attr.name)
+                unique++;
+
+        auto attrs = state.buildBindings(unique);
+        for (size_t i = 0; i < all.size(); i++)
+            if (i == 0 || all[i].attr.name != all[i - 1].attr.name)
+                attrs.insert(all[i].attr);
+        v.mkAttrs(attrs.alreadySorted());
+        return;
+    }
+
+    // ── General path: hash set dedup ─────────────────────────────────
+    // Walk right-to-left so highest-priority attrs are seen first.
+    // O(1) amortised dedup via unordered_set, then sort.
+    std::unordered_set<Symbol> seen;
+    seen.reserve(totalAttrs);
+
+    std::vector<Attr> merged;
+    merged.reserve(totalAttrs);
+
+    for (size_t i = listSize; i > 0; i--) {
+        for (auto & attr : *listView[i - 1]->attrs()) {
+            if (seen.insert(attr.name).second)
+                merged.push_back(attr);
+        }
+    }
+
+    std::sort(merged.begin(), merged.end());
+
+    auto attrs = state.buildBindings(merged.size());
+    for (auto & attr : merged)
+        attrs.insert(attr);
+    v.mkAttrs(attrs.alreadySorted());
+}
+
+static RegisterPrimOp primop_mergeAttrsList({
+    .name = "__mergeAttrsList",
+    .args = {"list"},
+    .doc = R"(
+      Merge a list of attribute sets into a single attribute set.
+      Later elements in the list take priority over earlier ones
+      when attribute names collide.
+
+      Equivalent to `builtins.foldl' (a: b: a // b) {} list` but
+      performs a single allocation instead of copying attributes
+      at each intermediate step.
+
+      Example:
+
+      ```nix
+      builtins.mergeAttrsList [
+        { a = 1; b = 2; }
+        { b = 3; c = 4; }
+        { c = 5; d = 6; }
+      ]
+      ```
+
+      evaluates to
+
+      ```nix
+      { a = 1; b = 3; c = 5; d = 6; }
+      ```
+    )",
+    .fun = prim_mergeAttrsList,
 });
 
 static void prim_intersectAttrs(EvalState & state, const PosIdx pos, Value ** args, Value & v)
