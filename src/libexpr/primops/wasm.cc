@@ -4,6 +4,29 @@
 #include <wasmtime.hh>
 #include <boost/unordered/concurrent_flat_map.hpp>
 
+/**
+ * Local realisePath for wasm.cc — mirrors the static function in primops.cc
+ * which is not accessible from other translation units.
+ */
+static nix::SourcePath wasmRealisePath(
+    nix::EvalState & state,
+    const nix::PosIdx pos,
+    nix::Value & v)
+{
+    nix::NixStringContext context;
+    auto path = state.coerceToPath(nix::noPos, v, context, "while realising the context of a path");
+    try {
+        if (!context.empty() && path.accessor == state.rootFS) {
+            auto rewrites = state.realiseContext(context);
+            path = {path.accessor, nix::CanonPath(nix::rewriteStrings(path.path.abs(), rewrites))};
+        }
+        return path.resolveSymlinks();
+    } catch (nix::Error & e) {
+        e.addTrace(state.positions[pos], "while realising the context of path '%s'", path);
+        throw;
+    }
+}
+
 using namespace wasmtime;
 
 namespace nix {
@@ -465,7 +488,7 @@ struct NixWasmInstance
     uint32_t read_file(ValueId pathId, uint32_t ptr, uint32_t len)
     {
         auto & pathValue = getValue(pathId);
-        auto path = state.realisePath(noPos, pathValue);
+        auto path = wasmRealisePath(state, noPos, pathValue);
 
         auto contents = path.readFile();
 
@@ -588,7 +611,7 @@ static void prim_wasm(EvalState & state, const PosIdx pos, Value ** args, Value 
     auto pathAttr = args[0]->attrs()->get(state.symbols.create("path"));
     if (!pathAttr)
         throw Error("missing required 'path' attribute in first argument to `builtins.wasm`");
-    auto wasmPath = state.realisePath(pos, *pathAttr->value);
+    auto wasmPath = wasmRealisePath(state, pos, *pathAttr->value);
 
     // Check for unknown attributes
     for (auto & attr : *args[0]->attrs()) {
@@ -634,10 +657,11 @@ static void prim_wasm(EvalState & state, const PosIdx pos, Value ** args, Value 
             WasiConfig wasiConfig;
             wasi_config_set_stdout_custom(wasiConfig.capi(), loggerTrampoline, &logger, nullptr);
             wasi_config_set_stderr_custom(wasiConfig.capi(), loggerTrampoline, &logger, nullptr);
-            wasiConfig.argv({"wasi", std::to_string(argId)});
+            wasiConfig.argv(std::vector<std::string>{"wasi", std::to_string(argId)});
             unwrap(instance.wasmStore.context().set_wasi(std::move(wasiConfig)));
 
-            auto res = instance.getExport<Func>(functionName).call(instance.wasmCtx, {});
+            auto func = instance.getExport<Func>(functionName);
+            auto res = func.call(instance.wasmCtx, {});
             if (!instance.resultId) {
                 unwrap(std::move(res));
                 throw Error("Wasm function '%s' from '%s' finished without returning a value", functionName, wasmPath);
@@ -694,7 +718,7 @@ static RegisterPrimOp primop_wasm(
       } { x = 42; }
       ```
      )",
-     .impl = prim_wasm,
+     .fun = prim_wasm,
      .experimentalFeature = Xp::WasmBuiltin});
 
 } // namespace nix
