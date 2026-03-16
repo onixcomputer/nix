@@ -5,3 +5,7 @@ sources += files(
   'fetchTree.cc',
   'fromTOML.cc',
 )
+
+if wasmtime_required.enabled()
+  sources += files('wasm.cc')
+endif
