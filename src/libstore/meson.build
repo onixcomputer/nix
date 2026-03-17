@@ -269,6 +269,7 @@ config_priv_h = configure_file(
 subdir('nix-meson-build-support/common')
 
 sources = files(
+  'active-builds.cc',
   'binary-cache-store.cc',
   'build-result.cc',
   'build/derivation-builder.cc',
@@ -307,6 +308,7 @@ sources = files(
   'local-binary-cache-store.cc',
   'local-fs-store.cc',
   'local-overlay-store.cc',
+  'local-store-active-builds.cc',
   'local-store.cc',
   'log-store.cc',
   'machines.cc',

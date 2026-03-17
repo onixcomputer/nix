@@ -733,6 +733,13 @@ struct ChrootLinuxDerivationBuilder : ChrootDerivationBuilder, LinuxDerivationBu
         if (status != 0)
             throw Error("could not add path '%s' to sandbox", store.printStorePath(path));
     }
+
+    ActiveBuild getActiveBuild() override
+    {
+        auto build = DerivationBuilderImpl::getActiveBuild();
+        build.cgroup = cgroup;
+        return build;
+    }
 };
 
 } // namespace nix
