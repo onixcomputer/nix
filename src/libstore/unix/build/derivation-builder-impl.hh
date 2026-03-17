@@ -32,6 +32,11 @@ protected:
      */
     Pid pid;
 
+    /**
+     * Handle used to make this build visible to `nix ps` while it is active.
+     */
+    std::optional<TrackActiveBuildsStore::BuildHandle> activeBuildHandle;
+
     LocalStore & store;
 
     const LocalSettings & localSettings = store.config->getLocalSettings();
@@ -200,6 +205,11 @@ protected:
     {
         return acquireUserLock(settings.nixStateDir, localSettings, 1, false);
     }
+
+    /**
+     * Construct the active build record for `nix ps`.
+     */
+    virtual ActiveBuild getActiveBuild();
 
     /**
      * Return the paths that should be made available in the sandbox.

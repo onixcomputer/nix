@@ -178,6 +178,7 @@ bool DerivationBuilderImpl::killChild()
 
         pid.wait();
 
+        activeBuildHandle.reset();
         miscMethods->childTerminated();
     }
     return ret;
@@ -211,6 +212,8 @@ SingleDrvOutputs DerivationBuilderImpl::unprepareBuild()
        open and modifies them after they have been chown'ed to
        root. */
     killSandbox(true);
+
+    activeBuildHandle.reset();
 
     /* Terminate the recursive Nix daemon. */
     stopDaemon();
@@ -511,9 +514,26 @@ std::optional<Descriptor> DerivationBuilderImpl::startBuild()
 
     pid.setSeparatePG(true);
 
+    /* Make the build visible to `nix ps`. */
+    if (auto tracker = dynamic_cast<TrackActiveBuildsStore *>(&store))
+        activeBuildHandle.emplace(tracker->buildStarted(getActiveBuild()));
+
     processSandboxSetupMessages();
 
     return builderOut.get();
+}
+
+ActiveBuild DerivationBuilderImpl::getActiveBuild()
+{
+    return {
+        .nixPid = getpid(),
+        .clientPid = std::nullopt,
+        .clientUid = std::nullopt,
+        .mainPid = pid,
+        .mainUser = UserInfo::fromUid(buildUser ? buildUser->getUID() : getuid()),
+        .startTime = buildResult.startTime,
+        .derivation = drvPath,
+    };
 }
 
 PathsInChroot DerivationBuilderImpl::getPathsInSandbox()

@@ -287,6 +287,14 @@ std::unique_ptr<UserLock> ChrootLinuxDerivationBuilder::getBuildUser()
         settings.nixStateDir, store.config->getLocalSettings(), drvOptions.useUidRange(drv) ? 65536 : 1, true);
 }
 
+ActiveBuild ChrootLinuxDerivationBuilder::getActiveBuild()
+{
+    auto build = DerivationBuilderImpl::getActiveBuild();
+    if (cgroup)
+        build.cgroup = cgroup->native();
+    return build;
+}
+
 void ChrootLinuxDerivationBuilder::prepareUser()
 {
     if ((buildUser && buildUser->getUIDCount() != 1) || store.config->getLocalSettings().useCgroups) {
