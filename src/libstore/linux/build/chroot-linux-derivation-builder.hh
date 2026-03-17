@@ -44,6 +44,8 @@ struct ChrootLinuxDerivationBuilder : ChrootDerivationBuilder, LinuxDerivationBu
 
     std::unique_ptr<UserLock> getBuildUser() override;
 
+    ActiveBuild getActiveBuild() override;
+
     void prepareUser() override;
 
     void prepareSandbox() override;

@@ -21,6 +21,8 @@
 #include "nix/util/args.hh"
 #include "nix/util/logging.hh"
 #include "nix/store/globals.hh"
+#include "nix/store/active-builds.hh"
+
 #include <variant>
 
 #ifndef _WIN32 // TODO need graceful async exit support on Windows?
@@ -1100,6 +1102,15 @@ static void performOp(
         submitStore.submitOutput(path, output);
         logger->stopWork();
         conn.to << 1;
+        break;
+    }
+
+    case WorkerProto::Op::QueryActiveBuilds: {
+        logger->startWork();
+        auto & activeBuildsStore = require<QueryActiveBuildsStore>(*store);
+        auto activeBuilds = activeBuildsStore.queryActiveBuilds();
+        logger->stopWork();
+        conn.to << nlohmann::json(activeBuilds).dump();
         break;
     }
 

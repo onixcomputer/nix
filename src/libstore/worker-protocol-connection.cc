@@ -6,6 +6,8 @@
 
 namespace nix {
 
+const WorkerProto::FeatureSet WorkerProto::allFeatures{{std::string(WorkerProto::featureQueryActiveBuilds)}};
+
 WorkerProto::BasicClientConnection::~BasicClientConnection()
 {
     try {

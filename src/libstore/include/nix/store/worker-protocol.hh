@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <chrono>
 #include <compare>
+#include <set>
 
 #include "nix/store/common-protocol.hh"
 #include "nix/store/gc-store.hh"
@@ -225,6 +226,13 @@ struct WorkerProto
     {
         WorkerProto::Serialise<T>::write(store, conn, t);
     }
+
+    using Feature = std::string;
+    using FeatureSet = std::set<Feature, std::less<>>;
+
+    static constexpr std::string_view featureQueryActiveBuilds{"queryActiveBuilds"};
+
+    static const FeatureSet allFeatures;
 };
 
 enum struct WorkerProto::Op : uint64_t {
@@ -272,7 +280,7 @@ enum struct WorkerProto::Op : uint64_t {
     AddBuildLog = 45,
     BuildPathsWithResults = 46,
     AddPermRoot = 47,
-    // QueryActiveBuilds = 48, // reserved for https://github.com/NixOS/nix/pull/15979
+    QueryActiveBuilds = 48,
     // AddTempRoots = 49, // reserved for https://github.com/NixOS/nix/pull/16113
     // QueryPathInfos = 50, // reserved for https://github.com/DeterminateSystems/nix-src/pull/539
     SubmitOutput = 1000, // Only used within derivations with feature

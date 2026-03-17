@@ -4,6 +4,7 @@
 #include <chrono>
 #include <optional>
 #include <filesystem>
+#include <set>
 
 #include "nix/util/types.hh"
 #include "nix/util/canon-path.hh"
@@ -40,5 +41,10 @@ CanonPath getCurrentCgroup();
  * returned, and then all subsequent calls will return the original cgroup.
  */
 CanonPath getRootCgroup();
+
+/**
+ * Get the PIDs of all processes in the given cgroup.
+ */
+std::set<pid_t> getPidsInCgroup(const std::filesystem::path & cgroup);
 
 } // namespace nix::linux
