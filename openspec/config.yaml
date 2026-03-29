@@ -1,0 +1,32 @@
+project:
+  name: nix-fork
+  description: Fork of CppNix (2.33.3) with cherry-picked features from Determinate Nix and Lix
+  language: cpp
+  schema: spec-driven
+
+domains:
+  - builtins
+  - evaluator
+  - store
+  - cli
+  - sandbox
+  - fetchers
+  - error-ux
+  - provenance
+
+context: |
+  This is a fork of NixOS/nix 2.33.3.
+  We cherry-pick features from DeterminateSystems/nix-src and Lix (lix.systems).
+  Build system: meson. Language: C++23. Packaging: Nix flake.
+  Already adopted: nix ps, builtins.wasm, builtins.mergeAttrsList, radicle fetcher.
+  Each change should be a self-contained cherry-pick or port, rebased on our 2.33.3 base.
+  Changes should not depend on other uncommitted changes unless explicitly noted.
+
+rules:
+  proposal:
+    - Reference the upstream PR number or Lix CL number
+    - Note which upstream version the feature was merged into
+    - Assess merge conflict risk against our 2.33.3 base
+  tasks:
+    - Each task should be a single commit
+    - Include a "verify" task that runs the relevant test suite
