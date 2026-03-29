@@ -1,0 +1,8 @@
+[package]
+name = "wasi-double"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "wasi_double"
+path = "src/main.rs"
