@@ -214,6 +214,16 @@ if nix_expr.found() and get_option('default_library') != 'static'
   }
 endif
 
+# Wasm tests (the test script auto-skips if wasm-builtin is not available)
+suites += {
+  'name' : 'wasm',
+  'deps' : [],
+  'tests' : [
+    'wasm.sh',
+  ],
+  'workdir' : meson.current_source_dir(),
+}
+
 subdir('ca')
 subdir('dyn-drv')
 subdir('flakes')
