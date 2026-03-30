@@ -79,7 +79,13 @@ void ConfigFile::apply(const Settings & flakeSettings)
         else
             assert(false);
 
-        if (!whitelist.count(baseName) && !flakeSettings.acceptFlakeConfig) {
+        if (!whitelist.count(baseName) && flakeSettings.acceptFlakeConfig != AcceptConfig) {
+            if (flakeSettings.acceptFlakeConfig == RejectConfig) {
+                warn("ignoring flake configuration setting '%s' (accept-flake-config is false)", name);
+                continue;
+            }
+
+            /* AskConfig: prompt interactively */
             bool trusted = false;
             auto trustedList = readTrustedList();
             auto tlname = get(trustedList, name);
@@ -89,15 +95,19 @@ void ConfigFile::apply(const Settings & flakeSettings)
                     "Using saved setting for '%s = %s' from ~/.local/share/nix/trusted-settings.json.", name, valueS);
             } else {
                 // FIXME: filter ANSI escapes, newlines, \r, etc.
-                if (std::tolower(logger
+                auto response = std::tolower(logger
                                      ->ask(
                                          fmt("do you want to allow configuration setting '%s' to be set to '" ANSI_RED
-                                             "%s" ANSI_NORMAL "' (y/N)?",
+                                             "%s" ANSI_NORMAL "' (y/N/A)?",
                                              name,
                                              valueS))
-                                     .value_or('n'))
-                    == 'y') {
+                                     .value_or('n'));
+                if (response == 'y') {
                     trusted = true;
+                } else if (response == 'a') {
+                    /* Reject ALL remaining untrusted settings */
+                    warn("rejecting all remaining untrusted flake configuration settings");
+                    break;
                 }
                 if (std::tolower(logger
                                      ->ask(
