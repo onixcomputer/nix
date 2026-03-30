@@ -5,6 +5,7 @@
 #include "nix/util/experimental-features.hh"
 #include "nix/util/util.hh"
 #include "nix/util/file-system.hh"
+#include "nix/util/users.hh"
 
 #include "nix/util/config-impl.hh"
 
@@ -13,6 +14,13 @@
 #include "nix/util/strings.hh"
 
 namespace nix {
+
+/* Thread-local directory of the config file currently being parsed.
+   Set by applyConfig(), read by parsePath() so that PathSetting and
+   friends can resolve relative and tilde paths against the config
+   file's location. Empty when loading from $NIX_CONFIG or programmatic
+   sources. */
+static thread_local std::string currentConfigDir;
 
 Config::Config(StringMap initials)
     : AbstractConfig(std::move(initials))
@@ -136,7 +144,7 @@ static void parseConfigFiles(
         if (include) {
             if (tokens.size() != 2)
                 throw UsageError("syntax error in configuration line '%1%' in '%2%'", line, path);
-            auto p = absPath(tokens[1], dirOf(path));
+            auto p = absPath(expandTilde(tokens[1]), dirOf(path));
             if (pathExists(p)) {
                 try {
                     std::string includedContents = readFile(p);
@@ -171,6 +179,17 @@ void AbstractConfig::applyConfig(const std::string & contents, const std::string
 
     parseConfigFiles(contents, path, parsedContents);
 
+    /* Set the config directory so that path-typed settings (PathSetting,
+       OptionalPathSetting, etc.) can resolve relative and tilde paths
+       against the location of the config file.  $NIX_CONFIG and
+       programmatic callers pass "<unknown>" — in that case we leave
+       currentConfigDir empty to disable resolution. */
+    auto savedConfigDir = currentConfigDir;
+    if (path != "<unknown>" && path != "")
+        currentConfigDir = dirOf(path);
+    else
+        currentConfigDir = "";
+
     // First apply experimental-feature related settings
     for (const auto & [name, value] : parsedContents)
         if (name == "experimental-features" || name == "extra-experimental-features")
@@ -188,6 +207,8 @@ void AbstractConfig::applyConfig(const std::string & contents, const std::string
             set(name, value);
         }
     }
+
+    currentConfigDir = savedConfigDir;
 }
 
 void Config::resetOverridden()
@@ -490,8 +511,16 @@ static Path parsePath(const AbstractSetting & s, const std::string & str)
 {
     if (str == "")
         throw UsageError("setting '%s' is a path and paths cannot be empty", s.name);
-    else
-        return canonPath(str);
+
+    /* Expand ~/… to the user's home directory. */
+    auto expanded = expandTilde(str);
+
+    /* If the path is relative and we're loading from a config file,
+       resolve it against the config file's directory. */
+    if (!expanded.empty() && expanded[0] != '/' && !currentConfigDir.empty())
+        return canonPath(currentConfigDir + "/" + expanded);
+
+    return canonPath(expanded);
 }
 
 template<>

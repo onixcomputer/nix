@@ -76,3 +76,22 @@ val2=$(nix config show warn-dirty)
 [[ $(nix config show --min-free 64K min-free) = 65536 ]]
 [[ $(nix config show --min-free 1M min-free) = 1048576 ]]
 [[ $(nix config show --min-free 2G min-free) = 2147483648 ]]
+
+# Test that relative paths in config files resolve against the config file dir.
+export NIX_USER_CONF_FILES=$here/config/nix-with-relative-path.conf
+var=$(nix config show diff-hook)
+# The relative path "hooks/my-diff-hook" should resolve to an absolute path
+# rooted in the config directory.
+[[ $var == */config/hooks/my-diff-hook ]]
+
+# Test that tilde paths in include directives expand to $HOME.
+mkdir -p "$HOME"
+echo "allowed-uris = https://tilde-test.example.com" > "$HOME/extra.conf"
+export NIX_USER_CONF_FILES=$here/config/nix-with-tilde-include.conf
+var=$(nix config show | grep '^allowed-uris =' | cut -d '=' -f 2 | xargs)
+[[ $var == https://tilde-test.example.com ]]
+
+# Test that $NIX_CONFIG resolves relative paths against cwd (no config file dir).
+export NIX_USER_CONF_FILES=
+var=$(NIX_CONFIG="diff-hook = relative/path" nix config show diff-hook)
+[[ $var == "$(pwd)/relative/path" ]]
