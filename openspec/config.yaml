@@ -13,6 +13,10 @@ domains:
   - fetchers
   - error-ux
   - provenance
+  - config
+  - repl
+  - security
+  - performance
 
 context: |
   This is a fork of NixOS/nix 2.33.3.
