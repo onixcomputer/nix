@@ -227,8 +227,11 @@ static void main_nix_build(int argc, char ** argv)
         else if (*arg == "--drv-link")
             getArg(*arg, arg, end); // obsolete
 
-        else if (*arg == "--out-link" || *arg == "-o")
+        else if (*arg == "--out-link" || *arg == "-o") {
             outLink = getArg(*arg, arg, end);
+            if (outLink.empty())
+                outLink = (tmpDir.path() / "result").string();
+        }
 
         else if (*arg == "--dry-run")
             dryRun = true;

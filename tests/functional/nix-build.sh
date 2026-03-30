@@ -47,3 +47,9 @@ outPathsA="$(echo $(nix-build nix-build-examples.nix -A input0 -A input1 -A inpu
 # shellcheck disable=SC2046,SC2005
 outPathsB="$(echo $(nix-build nix-build-examples.nix -A body -A input1 -A input2 -A input0 --no-out-link))"
 [[ "$outPathsB" = "$body $input1 $input2 $input0" ]]
+
+# -o "" should behave like --no-out-link (no symlinks created)
+outPath3=$(nix-build dependencies.nix -o "")
+[[ $outPath = "$outPath3" ]]
+[[ ! -e ./result ]]
+[[ ! -e ./-doc ]]
