@@ -4,6 +4,9 @@
 #include "nix/fetchers/cache.hh"
 #include "nix/fetchers/fetch-to-store.hh"
 #include "nix/fetchers/fetch-settings.hh"
+#include "nix/util/posix-source-accessor.hh"
+#include "nix/util/file-system.hh"
+#include "nix/util/signals.hh"
 
 namespace nix::fetchers {
 
@@ -142,40 +145,56 @@ struct PathInputScheme : InputScheme
     getAccessor(const Settings & settings, Store & store, const Input & _input) const override
     {
         Input input(_input);
-        auto path = getStrAttr(input.attrs, "path");
-
         auto absPath = getAbsPath(input);
 
         // FIXME: check whether access to 'path' is allowed.
+
+        /* If the path is already a valid store path named "source",
+           use the store accessor directly (avoids redundant copy). */
         auto storePath = store.maybeParseStorePath(absPath.string());
-
-        if (storePath)
+        if (storePath) {
             store.addTempRoot(*storePath);
-
-        time_t mtime = 0;
-        if (!storePath || storePath->name() != "source" || !store.isValidPath(*storePath)) {
-            Activity act(*logger, lvlTalkative, actUnknown, fmt("copying %s to the store", PathFmt(absPath)));
-            // FIXME: try to substitute storePath.
-            auto src = sinkToSource(
-                [&](Sink & sink) { mtime = dumpPathAndGetMtime(absPath.string(), sink, defaultPathFilter); });
-            storePath = store.addToStoreFromDump(*src, "source");
+            if (storePath->name() == "source" && store.isValidPath(*storePath)) {
+                auto accessor = store.requireStoreObjectAccessor(*storePath);
+                auto info = store.queryPathInfo(*storePath);
+                accessor->fingerprint =
+                    fmt("path:%s", info->narHash.to_string(HashFormat::SRI, true));
+                settings.getCache()->upsert(
+                    makeFetchToStoreCacheKey(
+                        input.getName(), *accessor->fingerprint, ContentAddressMethod::Raw::NixArchive, "/"),
+                    store,
+                    {},
+                    *storePath);
+                if (!input.getLastModified())
+                    input.attrs.insert_or_assign("lastModified", uint64_t(info->registrationTime));
+                return {accessor, std::move(input)};
+            }
         }
 
-        auto accessor = store.requireStoreObjectAccessor(*storePath);
+        /* Return a lazy accessor that reads directly from the
+           filesystem. The store copy is deferred until mountInput()
+           calls fetchToStore(). This avoids copying large directory
+           trees for evaluation that only touches a few files. */
+        auto accessor = make_ref<PosixSourceAccessor>(absPath, true);
+        accessor->lazyPathInput = true;
+        accessor->setPathDisplay("«" + input.to_string() + "»");
 
-        // To prevent `fetchToStore()` copying the path again to Nix
-        // store, pre-create an entry in the fetcher cache.
-        auto narHash = store.queryPathInfo(*storePath)->narHash.to_string(HashFormat::SRI, true);
-        accessor->fingerprint = fmt("path:%s", narHash);
+        /* Compute a NAR hash fingerprint so fetchToStore() can cache
+           the result. This reads file contents (O(n)) but avoids the
+           store write — the actual copy happens lazily in
+           mountInput(). */
+        auto narHash = accessor->hashPath(CanonPath::root);
+        auto narHashSRI = narHash.to_string(HashFormat::SRI, true);
+        accessor->fingerprint = fmt("path:%s", narHashSRI);
         settings.getCache()->upsert(
             makeSourcePathToHashCacheKey(
                 *accessor->fingerprint, ContentAddressMethod::Raw::NixArchive, CanonPath::root),
-            {{"hash", narHash}});
+            {{"hash", narHashSRI}});
 
         /* Trust the lastModified value supplied by the user, if
            any. It's not a "secure" attribute so we don't care. */
         if (!input.getLastModified())
-            input.attrs.insert_or_assign("lastModified", uint64_t(mtime));
+            input.attrs.insert_or_assign("lastModified", uint64_t(accessor->getLastModified().value_or(0)));
 
         return {accessor, std::move(input)};
     }

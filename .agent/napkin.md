@@ -10,10 +10,14 @@
 - Build system: meson, C++23, Nix flake
 
 ## Patterns That Work
-- (accumulate here as you learn them)
+- `expectStderr N cmd` in test pipelines: exit code must match exactly (nix-build returns 102 for BuildError, not 1)
+- For functional test error grepping, capture stderr to a file: `cmd 2>"$TEST_ROOT/err" && fail || true; grepQuiet pattern "$TEST_ROOT/err"`
+- `fixed.builder1.sh` requires IMPURE_VAR1/IMPURE_VAR2; use `buildCommand` in mkDerivation for simple FOD tests
+- `PosixSourceAccessor::createAtRoot()` returns a SourcePath, not ref<SourceAccessor>; use `make_ref<PosixSourceAccessor>(path, true)` directly
 
 ## Patterns That Don't Work
-- (accumulate here as approaches fail and why)
+- lazy-path-inputs via PosixSourceAccessor: `mountInput()` in `eval.cc` mounts the ORIGINAL accessor into storeFS. With PosixAccessor, this means storeFS delegates to the filesystem for mounted paths. When something later calls `lstat()` (throwing) on `flake.lock` through the storeFS, it hits the PosixAccessor which throws FileNotFound. The old store accessor works because the store copy has the same files but the store backend handles missing files in NAR-based paths differently. Fix requires either: (a) modifying `mountInput` to re-mount a store accessor after `fetchToStore`, or (b) making PosixAccessor's `lstat()` return a sentinel instead of throwing when mounted in storeFS. Affects C API test `nix_api_load_flake_with_flags` — flakes with inputs trigger it.
+- `input-substitution-before-fetch` (DetSys #380): already implemented in 2.33.3 in `getAccessorUnchecked()` — `isFinal() && getNarHash()` → `store.ensurePath()` before `scheme->getAccessor()`
 
 ## Domain Notes
 - wasmtime v40.0.2 needs rustc 1.89+; fixed by bumping nixpkgs from nixos-25.05 to nixos-unstable (rustc 1.94)

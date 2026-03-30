@@ -206,6 +206,12 @@ public:
     std::optional<std::string> fingerprint;
 
     /**
+     * Set by lazy path input accessors so that mountInput() knows
+     * to re-mount a store accessor instead.
+     */
+    bool lazyPathInput = false;
+
+    /**
      * Return the fingerprint for `path`. This is usually the
      * fingerprint of the current accessor, but for composite
      * accessors (like `MountedSourceAccessor`), we want to return the
