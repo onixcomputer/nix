@@ -14,6 +14,11 @@
 - For functional test error grepping, capture stderr to a file: `cmd 2>"$TEST_ROOT/err" && fail || true; grepQuiet pattern "$TEST_ROOT/err"`
 - `fixed.builder1.sh` requires IMPURE_VAR1/IMPURE_VAR2; use `buildCommand` in mkDerivation for simple FOD tests
 - `PosixSourceAccessor::createAtRoot()` returns a SourcePath, not ref<SourceAccessor>; use `make_ref<PosixSourceAccessor>(path, true)` directly
+- Template specializations for BaseSetting<T> MUST be in `namespace nix`, not in sub-namespaces like `nix::flake` — compiler rejects cross-namespace specializations
+- New enum settings need: parse(), to_string(), trait (appendable=false), convertToArg(), JSON serializer (for `nix config show --json`), AND explicit template instantiation `template class BaseSetting<T>` with abstract-setting-to-json.hh included
+- Follow SandboxMode pattern in globals.cc for any tri-state config settings
+- Cross-layer config (libutil needs libstore setting): use global override function in libutil, wire it in libstore init (see temp-dir/setTempDirOverride pattern)
+- `nix develop` shell is broken (meson patch failure) — use `nix build .#nix-cli` instead for compilation checks
 
 ## Patterns That Don't Work
 - lazy-path-inputs via PosixSourceAccessor: `mountInput()` in `eval.cc` mounts the ORIGINAL accessor into storeFS. With PosixAccessor, this means storeFS delegates to the filesystem for mounted paths. When something later calls `lstat()` (throwing) on `flake.lock` through the storeFS, it hits the PosixAccessor which throws FileNotFound. The old store accessor works because the store copy has the same files but the store backend handles missing files in NAR-based paths differently. Fix requires either: (a) modifying `mountInput` to re-mount a store accessor after `fetchToStore`, or (b) making PosixAccessor's `lstat()` return a sentinel instead of throwing when mounted in storeFS. Affects C API test `nix_api_load_flake_with_flags` — flakes with inputs trigger it.
