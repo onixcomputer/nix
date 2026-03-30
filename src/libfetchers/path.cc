@@ -4,6 +4,9 @@
 #include "nix/fetchers/cache.hh"
 #include "nix/fetchers/fetch-to-store.hh"
 #include "nix/fetchers/fetch-settings.hh"
+#include "nix/util/posix-source-accessor.hh"
+#include "nix/util/file-system.hh"
+#include "nix/util/signals.hh"
 
 namespace nix::fetchers {
 
@@ -142,43 +145,76 @@ struct PathInputScheme : InputScheme
     getAccessor(const Settings & settings, Store & store, const Input & _input) const override
     {
         Input input(_input);
-        auto path = getStrAttr(input.attrs, "path");
-
         auto absPath = getAbsPath(input);
 
         // FIXME: check whether access to 'path' is allowed.
+
+        /* If the path is already a valid store path named "source",
+           use the store accessor directly (avoids redundant copy). */
         auto storePath = store.maybeParseStorePath(absPath.string());
-
-        if (storePath)
+        if (storePath) {
             store.addTempRoot(*storePath);
-
-        time_t mtime = 0;
-        if (!storePath || storePath->name() != "source" || !store.isValidPath(*storePath)) {
-            Activity act(*logger, lvlTalkative, actUnknown, fmt("copying %s to the store", absPath));
-            // FIXME: try to substitute storePath.
-            auto src = sinkToSource(
-                [&](Sink & sink) { mtime = dumpPathAndGetMtime(absPath.string(), sink, defaultPathFilter); });
-            storePath = store.addToStoreFromDump(*src, "source");
+            if (storePath->name() == "source" && store.isValidPath(*storePath)) {
+                auto accessor = store.requireStoreObjectAccessor(*storePath);
+                auto info = store.queryPathInfo(*storePath);
+                accessor->fingerprint =
+                    fmt("path:%s", info->narHash.to_string(HashFormat::SRI, true));
+                settings.getCache()->upsert(
+                    makeFetchToStoreCacheKey(
+                        input.getName(), *accessor->fingerprint, ContentAddressMethod::Raw::NixArchive, "/"),
+                    store,
+                    {},
+                    *storePath);
+                if (!input.getLastModified())
+                    input.attrs.insert_or_assign("lastModified", uint64_t(info->registrationTime));
+                return {accessor, std::move(input)};
+            }
         }
 
-        auto accessor = store.requireStoreObjectAccessor(*storePath);
+        /* Return a lazy accessor that reads directly from the
+           filesystem. The store copy is deferred until mountInput()
+           calls fetchToStore(). This avoids copying large directory
+           trees for evaluation that only touches a few files. */
+        auto accessor = make_ref<PosixSourceAccessor>(std::filesystem::path(absPath), true);
+        accessor->lazyPathInput = true;
 
-        // To prevent `fetchToStore()` copying the path again to Nix
-        // store, pre-create an entry in the fetcher cache.
-        auto info = store.queryPathInfo(*storePath);
+        /* Compute lastModified by stat'ing the tree. Cheaper than
+           a full store copy since we only stat, not read contents. */
+        if (!input.getLastModified()) {
+            time_t maxMtime = 0;
+            struct stat rootSt;
+            if (lstat(absPath.string().c_str(), &rootSt) == 0) {
+                maxMtime = rootSt.st_mtime;
+                if (S_ISDIR(rootSt.st_mode)) {
+                    std::function<void(const std::string &)> walk;
+                    walk = [&](const std::string & dir) {
+                        for (auto & entry : DirectoryIterator{dir}) {
+                            checkInterrupt();
+                            auto p = entry.path().string();
+                            struct stat st;
+                            if (lstat(p.c_str(), &st) == 0) {
+                                if (st.st_mtime > maxMtime)
+                                    maxMtime = st.st_mtime;
+                                if (S_ISDIR(st.st_mode))
+                                    walk(p);
+                            }
+                        }
+                    };
+                    walk(absPath.string());
+                }
+            }
+            input.attrs.insert_or_assign("lastModified", uint64_t(maxMtime));
+        }
+
+        accessor->setPathDisplay("«" + input.to_string() + "»");
+
+        /* Compute a NAR hash fingerprint so fetchToStore() can cache
+           the result. This reads file contents (O(n)) but avoids the
+           store write — the actual copy happens lazily in
+           mountInput(). */
+        auto narHash = accessor->hashPath(CanonPath::root);
         accessor->fingerprint =
-            fmt("path:%s", store.queryPathInfo(*storePath)->narHash.to_string(HashFormat::SRI, true));
-        settings.getCache()->upsert(
-            makeFetchToStoreCacheKey(
-                input.getName(), *accessor->fingerprint, ContentAddressMethod::Raw::NixArchive, "/"),
-            store,
-            {},
-            *storePath);
-
-        /* Trust the lastModified value supplied by the user, if
-           any. It's not a "secure" attribute so we don't care. */
-        if (!input.getLastModified())
-            input.attrs.insert_or_assign("lastModified", uint64_t(mtime));
+            fmt("path:%s", narHash.to_string(HashFormat::SRI, true));
 
         return {accessor, std::move(input)};
     }

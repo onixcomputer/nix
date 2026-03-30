@@ -27,7 +27,19 @@ EvalState::mountInput(fetchers::Input & input, const fetchers::Input & originalI
 
     allowPath(storePath); // FIXME: should just whitelist the entire virtual store
 
-    storeFS->mount(CanonPath(store->printStorePath(storePath)), accessor);
+    /* If the accessor is a lazy filesystem accessor (from a path
+       input), re-mount a proper store accessor so the storeFS handles
+       missing files like flake.lock correctly. For all other
+       accessors (git, github, store-backed), mount as-is to preserve
+       their display paths and behavior. */
+    if (accessor->lazyPathInput) {
+        auto storeAccessor = store->requireStoreObjectAccessor(storePath);
+        if (!storeAccessor->fingerprint && accessor->fingerprint)
+            storeAccessor->fingerprint = accessor->fingerprint;
+        storeFS->mount(CanonPath(store->printStorePath(storePath)), storeAccessor);
+    } else {
+        storeFS->mount(CanonPath(store->printStorePath(storePath)), accessor);
+    }
 
     auto narHash = store->queryPathInfo(storePath)->narHash;
     input.attrs.insert_or_assign("narHash", narHash.to_string(HashFormat::SRI, true));
