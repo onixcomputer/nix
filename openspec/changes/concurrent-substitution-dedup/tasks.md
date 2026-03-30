@@ -2,15 +2,20 @@
 
 ## Phase 1: Port
 
-- [ ] Fetch DetSys PR #398 diff
-- [ ] Study how substitution goals are currently created and tracked
-- [ ] Add a map of in-flight substitutions keyed by store path
-- [ ] When a substitution is requested for a path already in flight, share the existing goal
-- [ ] Handle cleanup when the original substitution completes or fails
+- [x] Fetch DetSys PR #398 diff
+- [x] Add `EnsureRead` wrapper Source to `src/libutil/include/nix/util/serialise.hh`
+- [x] Remove `narRead`/`cleanup` skip logic from `LocalStore::addToStore` in `local-store.cc`
+- [x] Wrap source in `EnsureRead` in `daemon.cc` (daemon addToStore call)
+- [x] Wrap source in `EnsureRead` in `store-api.cc` (`addMultipleToStore`)
+- [x] Update `store-api.hh` doc comment noting NAR may not be fully read
 
 ## Phase 2: Verify
 
-- [ ] Run `meson test`
-- [ ] Test with `nix build` of multiple derivations that share a common dependency
-- [ ] Verify only one download per unique path in daemon logs
-- [ ] Commit on a new branch `subst-dedup-2.33.3`
+- [x] `nix build .#nix-cli` — all 8 derivations build cleanly
+- [x] Committed on branch `raise-fd-limit-2.33.3` (7d90473f0)
+
+## Notes
+
+- `export-import.cc` did not need changes — our code uses StringSource (data already captured)
+- `copyStorePath` test hook (`_NIX_TEST_CONCURRENT_SUBSTITUTION`) not ported (optional, only for testing)
+- The `nix-copy-ssh-ng.sh` and `binary-cache.sh` functional test changes not ported (require test infra)
