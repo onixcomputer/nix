@@ -440,6 +440,20 @@ void AutoDelete::cancel() noexcept
     del = false;
 }
 
+//////////////////////////////////////////////////////////////////////
+
+static std::optional<std::filesystem::path> tempDirOverride;
+
+void setTempDirOverride(std::optional<std::filesystem::path> path)
+{
+    tempDirOverride = std::move(path);
+}
+
+std::optional<std::filesystem::path> getTempDirOverride()
+{
+    return tempDirOverride;
+}
+
 std::filesystem::path createTempDir(const std::filesystem::path & tmpRoot, const std::string & prefix, mode_t mode)
 {
     while (1) {

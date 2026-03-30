@@ -197,6 +197,17 @@ public:
 
     Setting<bool> keepFailed{this, false, "keep-failed", "Whether to keep temporary directories of failed builds."};
 
+    Setting<std::optional<AbsolutePath>> tempDir{
+        this,
+        std::nullopt,
+        "temp-dir",
+        R"(
+          Directory for Nix's own temporary files, such as download staging and evaluation scratch files.
+
+          When set, Nix uses this instead of the platform default temporary directory for its internal temporary files.
+          Unlike setting `TMPDIR`, this does not affect the environment inherited by `nix-shell`, `nix shell`, or `nix run`.
+        )"};
+
     /**
      * Whether to show build log output in real time.
      */
