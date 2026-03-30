@@ -12,7 +12,8 @@ void checkOutputs(
     const StorePath & drvPath,
     const decltype(Derivation::outputs) & drvOutputs,
     const decltype(DerivationOptions<StorePath>::outputChecks) & outputChecks,
-    const std::map<std::string, ValidPathInfo> & outputs)
+    const std::map<std::string, ValidPathInfo> & outputs,
+    const StringPairs & env)
 {
     std::map<Path, const ValidPathInfo &> outputsByPath;
     for (auto & output : outputs)
@@ -34,14 +35,33 @@ void checkOutputs(
             assert(info.ca);
             auto & got = info.ca->hash;
             if (wanted != got) {
+                /* Try to extract the source URL from the derivation
+                   environment for a more helpful diagnostic. */
+                std::string url;
+                if (auto i = env.find("url"); i != env.end())
+                    url = i->second;
+                else if (auto i = env.find("urls"); i != env.end()) {
+                    /* `urls` is a space-separated list; take the first. */
+                    url = i->second.substr(0, i->second.find(' '));
+                }
+
                 /* Throw an error after registering the path as
                    valid. */
-                throw BuildError(
-                    BuildResult::Failure::HashMismatch,
-                    "hash mismatch in fixed-output derivation '%s':\n  specified: %s\n     got:    %s",
-                    store.printStorePath(drvPath),
-                    wanted.to_string(HashFormat::SRI, true),
-                    got.to_string(HashFormat::SRI, true));
+                if (url.empty())
+                    throw BuildError(
+                        BuildResult::Failure::HashMismatch,
+                        "hash mismatch in fixed-output derivation '%s':\n  specified: %s\n     got:    %s",
+                        store.printStorePath(drvPath),
+                        wanted.to_string(HashFormat::SRI, true),
+                        got.to_string(HashFormat::SRI, true));
+                else
+                    throw BuildError(
+                        BuildResult::Failure::HashMismatch,
+                        "hash mismatch in fixed-output derivation '%s':\n  specified: %s\n     got:    %s\n  url:       %s",
+                        store.printStorePath(drvPath),
+                        wanted.to_string(HashFormat::SRI, true),
+                        got.to_string(HashFormat::SRI, true),
+                        url);
             }
             if (!info.references.empty()) {
                 auto numViolations = info.references.size();

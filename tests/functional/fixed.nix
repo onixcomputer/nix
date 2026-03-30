@@ -49,6 +49,17 @@ rec {
     (f ./fixed.builder1.sh "flat" "md5" "0ddd8be4b179a529afa5f2ffae4b9858")
   ];
 
+  # A FOD with url env var and wrong hash, to test that the hash
+  # mismatch error includes the source URL in the diagnostic.
+  badWithUrl = mkDerivation {
+    name = "fixed-bad-url";
+    buildCommand = ''echo "Hello World!" > $out'';
+    outputHashMode = "flat";
+    outputHashAlgo = "md5";
+    outputHash = "0ddd8be4b179a529afa5f2ffae4b9858";
+    url = "https://example.com/some-file.tar.gz";
+  };
+
   reallyBad = [
     # Hash too short, and not base-32 either.
     (f ./fixed.builder1.sh "flat" "md5" "ddd8be4b179a529afa5f2ffae4b9858")
