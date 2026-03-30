@@ -102,7 +102,18 @@ static int main_nix_collect_garbage(int argc, char ** argv)
         options.action = dryRun ? GCOptions::gcReturnDead : GCOptions::gcDeleteDead;
         options.pathsToDelete = GCOptions::WholeStore{};
         GCResults results;
-        Finally printer([&] { printFreed(dryRun, results); });
+        Finally printer([&] {
+            if (dryRun) {
+                for (auto & path : results.paths)
+                    std::cout << path << std::endl;
+                std::cout << fmt(
+                    "%d store paths would be deleted, %s would be freed\n",
+                    results.paths.size(),
+                    renderSize(results.bytesFreed));
+            } else {
+                printFreed(false, results);
+            }
+        });
         gcStore.collectGarbage(options, results);
 
         return 0;

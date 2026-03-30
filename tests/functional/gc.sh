@@ -46,6 +46,13 @@ if test -e "$drvPath"; then false; fi
 
 rm "$NIX_STATE_DIR/gcroots/foo"
 
+# Test --dry-run: should list dead paths but not delete them.
+dryRunOutput=$(nix-collect-garbage --dry-run)
+echo "$dryRunOutput" | grepQuiet "would be freed"
+echo "$dryRunOutput" | grepQuiet "$outPath"
+# Verify nothing was actually deleted.
+test -e "$outPath/foobar"
+
 nix-collect-garbage
 
 # Check that the output has been GC'd.
