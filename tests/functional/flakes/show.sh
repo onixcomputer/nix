@@ -109,6 +109,32 @@ true
 '
 
 
+# Test that nix flake show prints meta.description for packages
+cat >flake.nix <<EOF
+{
+  outputs = inputs: {
+    packages.$system.hello = derivation {
+      name = "hello-1.0";
+      system = "$system";
+      builder = "/bin/sh";
+      meta = {
+        description = "A friendly greeting program";
+      };
+    };
+  };
+}
+EOF
+nix flake show 2>&1 | grepQuiet "A friendly greeting program"
+
+# Also verify JSON still works with description
+nix flake show --json --all-systems > show-output.json
+nix eval --impure --expr '
+let show_output = builtins.fromJSON (builtins.readFile ./show-output.json);
+in
+assert show_output.packages.${builtins.currentSystem}.hello.description == "A friendly greeting program";
+true
+'
+
 # Test that nix keeps going even when packages.$SYSTEM contains not derivations
 cat >flake.nix <<EOF
 {
