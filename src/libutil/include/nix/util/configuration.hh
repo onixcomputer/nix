@@ -495,3 +495,42 @@ struct ExperimentalFeatureSettings : Config
 extern ExperimentalFeatureSettings experimentalFeatureSettings;
 
 } // namespace nix
+
+#include "nix/util/deprecated-features.hh"
+
+namespace nix {
+
+struct DeprecatedFeatureSettings : Config
+{
+    Setting<std::set<DeprecatedFeature>> deprecatedFeatures{
+        this,
+        {},
+        "deprecated-features",
+        R"(
+          Deprecated features whose warnings should be suppressed.
+
+          Example:
+
+          ```
+          deprecated-features = url-literals ancient-let
+          ```
+
+          By default, using deprecated features emits warnings. Adding a
+          feature here acknowledges the deprecation and suppresses the warning.
+        )"};
+
+    /**
+     * Check whether warnings for the given deprecated feature are suppressed.
+     */
+    bool isAllowed(const DeprecatedFeature &) const;
+
+    /**
+     * Warn about use of a deprecated feature unless it's been
+     * explicitly allowed.
+     */
+    void warnIfNotAllowed(const DeprecatedFeature &) const;
+};
+
+extern DeprecatedFeatureSettings deprecatedFeatureSettings;
+
+} // namespace nix

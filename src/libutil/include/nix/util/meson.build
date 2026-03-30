@@ -30,6 +30,7 @@ headers = files(
   'exec.hh',
   'executable-path.hh',
   'exit.hh',
+  'deprecated-features.hh',
   'experimental-features.hh',
   'file-content-address.hh',
   'file-descriptor.hh',
