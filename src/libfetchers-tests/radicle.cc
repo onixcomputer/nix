@@ -267,7 +267,7 @@ TEST_F(RadicleInputTest, isLocked)
             {"type", Attr("rad")},
             {"rid", Attr("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5")},
         });
-        EXPECT_FALSE(input.isLocked());
+        EXPECT_FALSE(input.isLocked(fetchSettings));
     }
 
     // Input with rev is locked
@@ -277,7 +277,7 @@ TEST_F(RadicleInputTest, isLocked)
             {"rid", Attr("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5")},
             {"rev", Attr("1234567890abcdef1234567890abcdef12345678")},
         });
-        EXPECT_TRUE(input.isLocked());
+        EXPECT_TRUE(input.isLocked(fetchSettings));
     }
 }
 
@@ -298,7 +298,7 @@ TEST_F(RadicleInputTest, fingerprint)
             {"type", Attr("rad")},
             {"rid", Attr("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5")},
         });
-        auto fp = input.getFingerprint(store);
+        auto fp = input.getFingerprint(*store);
         EXPECT_FALSE(fp.has_value());
     }
 
@@ -309,7 +309,7 @@ TEST_F(RadicleInputTest, fingerprint)
             {"rid", Attr("rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5")},
             {"rev", Attr("1234567890abcdef1234567890abcdef12345678")},
         });
-        auto fp = input.getFingerprint(store);
+        auto fp = input.getFingerprint(*store);
         EXPECT_TRUE(fp.has_value());
         EXPECT_EQ(*fp, "1234567890abcdef1234567890abcdef12345678");
     }
