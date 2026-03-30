@@ -761,7 +761,11 @@ public:
 };
 
 /**
- * A wrapper source that ensures that at least a specified number of bytes are read from the underlying source.
+ * A wrapper source that ensures that at least a specified number of
+ * bytes are read from the underlying source. If the wrapper is
+ * destroyed before all bytes are consumed, the remaining bytes are
+ * skipped. This is used to ensure that callers of addToStore()
+ * always consume the NAR, even if the path is already valid.
  */
 class EnsureRead : public Source
 {

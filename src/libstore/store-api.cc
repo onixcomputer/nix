@@ -261,7 +261,9 @@ void Store::addMultipleToStore(PathsSource && pathsToCopy, Activity & act, Repai
                 MaintainCount<decltype(nrRunning)> mc(nrRunning);
                 showProgress();
                 try {
-                    addToStore(info, *source, repair, checkSigs);
+                    EnsureRead wrapper{*source, info.narSize};
+                    addToStore(info, wrapper, repair, checkSigs);
+                    wrapper.finish();
                 } catch (Error & e) {
                     nrFailed++;
                     if (!settings.getWorkerSettings().keepGoing)
