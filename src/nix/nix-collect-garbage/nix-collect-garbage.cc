@@ -98,13 +98,20 @@ static int main_nix_collect_garbage(int argc, char ** argv)
         }
 
         // Run the actual garbage collector.
-        if (!dryRun) {
+        {
             auto store = openStore();
             auto & gcStore = require<GcStore>(*store);
-            options.action = GCOptions::gcDeleteDead;
+            options.action = dryRun ? GCOptions::gcReturnDead : GCOptions::gcDeleteDead;
             GCResults results;
-            PrintFreed freed(true, results);
+            PrintFreed freed(!dryRun, results);
             gcStore.collectGarbage(options, results);
+
+            if (dryRun) {
+                for (auto & p : results.paths)
+                    std::cout << p << std::endl;
+                std::cout << fmt("%d store paths would be deleted, %s would be freed\n",
+                    results.paths.size(), renderSize(results.bytesFreed));
+            }
         }
 
         return 0;
