@@ -208,19 +208,25 @@ struct RadicleInputScheme : InputScheme
         return "rad";
     }
 
-    StringSet allowedAttrs() const override
+    std::string schemeDescription() const override
     {
-        return {
-            "rid",
-            "url",
-            "ref",
-            "rev",
-            "node",
-            "lastModified",
-            "revCount",
-            "narHash",
-            "name",
+        return "Radicle repositories";
+    }
+
+    const std::map<std::string, AttributeInfo> & allowedAttrs() const override
+    {
+        static const std::map<std::string, AttributeInfo> attrs = {
+            {"rid", {.required = true}},
+            {"url", {.required = false}},
+            {"ref", {.required = false}},
+            {"rev", {.required = false}},
+            {"node", {.required = false}},
+            {"lastModified", {.type = "Integer", .required = false}},
+            {"revCount", {.type = "Integer", .required = false}},
+            {"narHash", {.required = false}},
+            {"name", {.required = false}},
         };
+        return attrs;
     }
 
     std::optional<Input> inputFromURL(const Settings & settings, const ParsedURL & url, bool requireTree) const override
@@ -294,7 +300,7 @@ struct RadicleInputScheme : InputScheme
         if (auto node = maybeGetStrAttr(attrs, "node"); node && !isValidNodeIdentifier(*node))
             throw BadURL("invalid node identifier '%s': must be a valid domain name or node ID", *node);
 
-        Input input{settings};
+        Input input{};
         input.attrs = attrs;
         return input;
     }
@@ -349,7 +355,8 @@ struct RadicleInputScheme : InputScheme
         return res;
     }
 
-    void clone(const Input & input, const Path & destDir) const override
+    void clone(const Settings & settings, Store & store, const Input & input, const std::filesystem::path & destDir)
+        const override
     {
         auto rid = getStrAttr(input.attrs, "rid");
         auto node = maybeGetStrAttr(input.attrs, "node");
@@ -357,28 +364,28 @@ struct RadicleInputScheme : InputScheme
         if (input.getRev())
             throw UnimplementedError("cloning a specific Radicle revision is not implemented");
 
-        cloneRadicleRepo(rid, node, destDir);
+        cloneRadicleRepo(rid, node, destDir.string());
 
         // Checkout specific ref if requested
         if (auto ref = input.getRef()) {
             auto [status, output] = runProgram(RunOptions{
                 .program = "git",
                 .lookupPath = true,
-                .args = {"-C", destDir, "checkout", *ref},
+                .args = {"-C", destDir.string(), "checkout", *ref},
             });
             if (status != 0)
                 throw Error("failed to checkout ref '%s': %s", *ref, output);
         }
     }
 
-    std::optional<std::string> getFingerprint(ref<Store> store, const Input & input) const override
+    std::optional<std::string> getFingerprint(Store & store, const Input & input) const override
     {
         if (auto rev = input.getRev())
             return rev->gitRev();
         return std::nullopt;
     }
 
-    bool isLocked(const Input & input) const override
+    bool isLocked(const Settings & settings, const Input & input) const override
     {
         return input.getRev().has_value();
     }
@@ -538,19 +545,19 @@ private:
         }
 
         // Create SourceAccessor for the specific revision
-        auto accessor = repo->getAccessor(rev, false, "«" + input.to_string() + "»");
+        auto accessor = repo->getAccessor(rev, {}, "«" + input.to_string() + "»");
 
         return std::make_pair(accessor, std::move(input));
     }
 
 public:
-    std::pair<ref<SourceAccessor>, Input> getAccessor(ref<Store> store, const Input & _input) const override
+    std::pair<ref<SourceAccessor>, Input>
+    getAccessor(const Settings & settings, Store & store, const Input & _input) const override
     {
         Input input(_input);
         auto repoInfo = getRepoInfo(input);
-        const auto & settings = *input.settings;
 
-        return getAccessorFromCommit(store, repoInfo, std::move(input), settings);
+        return getAccessorFromCommit(ref<Store>(store.shared_from_this()), repoInfo, std::move(input), settings);
     }
 };
 
