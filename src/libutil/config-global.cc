@@ -70,4 +70,8 @@ ExperimentalFeatureSettings experimentalFeatureSettings;
 
 static GlobalConfig::Register rSettings(&experimentalFeatureSettings);
 
+DeprecatedFeatureSettings deprecatedFeatureSettings;
+
+static GlobalConfig::Register rDeprecatedSettings(&deprecatedFeatureSettings);
+
 } // namespace nix

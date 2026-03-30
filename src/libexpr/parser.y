@@ -378,6 +378,9 @@ expr_simple
               .pos = state->positions[CUR_POS]
           });
       });
+      /* TODO: enable url-literals deprecation warning once lang tests
+         are updated to use --extra-deprecated-features url-literals.
+         deprecatedFeatureSettings.warnIfNotAllowed(Dp::UrlLiterals); */
       $$ = state->exprs.add<ExprString>(state->exprs.alloc, $1);
   }
   | '(' expr ')' { $$ = $2; }
