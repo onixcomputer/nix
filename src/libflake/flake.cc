@@ -889,7 +889,7 @@ LockedFlake lockFlake(
             .flake = std::move(flake), .lockFile = std::move(newLockFile), .nodePaths = std::move(nodePaths)};
 
     } catch (Error & e) {
-        e.addTrace({}, "while updating the lock file of flake '%s'", flake.lockedRef.to_string());
+        e.addTrace({}, "while updating the lock file of flake '%s'", flake.lockedRef.to_abbreviated_string());
         throw;
     }
 }

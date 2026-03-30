@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "nix/flake/flakeref.hh"
+#include "nix/util/hash.hh"
 #include "nix/util/url.hh"
 #include "nix/util/url-parts.hh"
 #include "nix/fetchers/fetchers.hh"
@@ -48,6 +49,20 @@ std::string FlakeRef::to_string() const
     if (subdir != "")
         extraQuery.insert_or_assign("dir", subdir);
     return input.toURLString(extraQuery);
+}
+
+std::string FlakeRef::to_abbreviated_string(size_t len) const
+{
+    auto s = to_string();
+    if (auto rev = input.getRev()) {
+        auto fullRev = rev->to_string(HashFormat::Base16, false);
+        if (fullRev.size() > len) {
+            auto pos = s.rfind(fullRev);
+            if (pos != std::string::npos)
+                s.replace(pos, fullRev.size(), fullRev.substr(0, len));
+        }
+    }
+    return s;
 }
 
 fetchers::Attrs FlakeRef::toAttrs() const
