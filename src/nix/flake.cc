@@ -1267,25 +1267,30 @@ struct CmdFlakeShow : FlakeCommand, MixJSON
                 auto showDerivation = [&]() {
                     auto name = visitor.getAttr(state->s.name)->getString();
 
-                    if (json) {
-                        std::optional<std::string> description;
+                    std::optional<std::string> description;
+                    try {
                         if (auto aMeta = visitor.maybeGetAttr(state->s.meta)) {
                             if (auto aDescription = aMeta->maybeGetAttr(state->s.description))
                                 description = aDescription->getString();
                         }
+                    } catch (EvalError &) {
+                    }
+
+                    if (json) {
                         j.emplace("type", "derivation");
                         j.emplace("name", name);
                         j.emplace("description", description ? *description : "");
                     } else {
-                        logger->cout(
-                            "%s: %s '%s'",
-                            headerPrefix,
+                        auto kind =
                             attrPath.size() == 2 && attrPathS[0] == "devShell"    ? "development environment"
                             : attrPath.size() >= 2 && attrPathS[0] == "devShells" ? "development environment"
                             : attrPath.size() == 3 && attrPathS[0] == "checks"    ? "derivation"
                             : attrPath.size() >= 1 && attrPathS[0] == "hydraJobs" ? "derivation"
-                                                                                  : "package",
-                            name);
+                                                                                  : "package";
+                        if (description && !description->empty())
+                            logger->cout("%s: %s '%s' - %s", headerPrefix, kind, name, *description);
+                        else
+                            logger->cout("%s: %s '%s'", headerPrefix, kind, name);
                     }
                 };
 
