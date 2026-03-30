@@ -361,9 +361,18 @@ AutoCloseFD createAnonymousTempFile();
 std::pair<AutoCloseFD, Path> createTempFile(const Path & prefix = "nix");
 
 /**
- * Return `TMPDIR`, or the default temporary directory if unset or empty.
+ * Return the temporary directory for Nix's internal use.
+ *
+ * Checks (in order): the `temp-dir` override (set by libstore when the
+ * setting is configured), `TMPDIR`, then `/tmp`.
  */
 std::filesystem::path defaultTempDir();
+
+/**
+ * Set a global override for `defaultTempDir()`. Called by libstore
+ * after loading the `temp-dir` setting.
+ */
+void setTempDirOverride(std::optional<std::filesystem::path> path);
 
 /**
  * Interpret `exe` as a location in the ambient file system and return

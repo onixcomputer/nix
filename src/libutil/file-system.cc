@@ -672,8 +672,17 @@ void AutoUnmount::cancel()
 
 //////////////////////////////////////////////////////////////////////
 
+static std::optional<std::filesystem::path> tempDirOverride;
+
+void setTempDirOverride(std::optional<std::filesystem::path> path)
+{
+    tempDirOverride = std::move(path);
+}
+
 std::filesystem::path defaultTempDir()
 {
+    if (tempDirOverride)
+        return *tempDirOverride;
     return getEnvNonEmpty("TMPDIR").value_or("/tmp");
 }
 

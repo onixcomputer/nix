@@ -798,6 +798,19 @@ public:
             See also the per-store [`build-dir`](@docroot@/store/types/local-store.md#store-local-store-build-dir) setting.
         )"};
 
+    Setting<std::optional<Path>> tempDir{
+        this,
+        std::nullopt,
+        "temp-dir",
+        R"(
+            Directory for Nix's own temporary files (download staging, evaluation
+            scratch, etc).
+
+            When set, Nix uses this instead of `TMPDIR` / `/tmp` for its internal
+            temporary files. Unlike setting `TMPDIR`, this does not affect the
+            environment inherited by `nix-shell`, `nix shell`, or `nix run`.
+        )"};
+
     Setting<PathSet> allowedImpureHostPrefixes{
         this,
         {},

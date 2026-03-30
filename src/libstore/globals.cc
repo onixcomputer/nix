@@ -223,7 +223,7 @@ StringSet Settings::getDefaultExtraPlatforms()
         extraPlatforms.insert(*iter + "-linux");
 #elif defined(__APPLE__)
     // Rosetta 2 emulation layer can run x86_64 binaries on aarch64
-    // machines. Note that we can’t force processes from executing
+    // machines. Note that we can't force processes from executing
     // x86_64 in aarch64 environments or vice versa since they can
     // always exec with their own binary preferences.
     if (std::string{NIX_LOCAL_SYSTEM} == "aarch64-darwin"
@@ -485,10 +485,16 @@ void initLibStore(bool loadConfig)
        https://github.com/apple-oss-distributions/objc4/blob/01edf1705fbc3ff78a423cd21e03dfc21eb4d780/runtime/objc-initialize.mm#L614-L636
     */
     curl_global_init(CURL_GLOBAL_ALL);
+    /* Apply the temp-dir setting as the global override for
+       defaultTempDir(). This affects all internal temp file creation
+       without leaking into nix-shell/nix shell/nix run environments. */
+    if (auto td = settings.tempDir.get())
+        setTempDirOverride(*td);
+
 #ifdef __APPLE__
     /* On macOS, don't use the per-session TMPDIR (as set e.g. by
        sshd). This breaks build users because they don't have access
-       to the TMPDIR, in particular in ‘nix-store --serve’. */
+       to the TMPDIR, in particular in 'nix-store --serve'. */
     if (hasPrefix(defaultTempDir().string(), "/var/folders/"))
         unsetenv("TMPDIR");
 #endif
