@@ -14,6 +14,27 @@ struct EvalSettings;
 
 namespace nix::flake {
 
+/**
+ * Tri-state for `accept-flake-config`:
+ * - `AcceptConfig`: silently accept all flake config options
+ * - `RejectConfig`: silently reject all flake config options
+ * - `AskConfig`: prompt the user for each option (default)
+ */
+enum AcceptFlakeConfigMode { AcceptConfig, RejectConfig, AskConfig };
+
+} // namespace nix::flake
+
+namespace nix {
+
+template<>
+flake::AcceptFlakeConfigMode BaseSetting<flake::AcceptFlakeConfigMode>::parse(const std::string & str) const;
+template<>
+std::string BaseSetting<flake::AcceptFlakeConfigMode>::to_string() const;
+
+} // namespace nix
+
+namespace nix::flake {
+
 struct Settings : public Config
 {
     Settings();
@@ -29,11 +50,18 @@ struct Settings : public Config
         true,
         Xp::Flakes};
 
-    Setting<bool> acceptFlakeConfig{
+    Setting<AcceptFlakeConfigMode> acceptFlakeConfig{
         this,
-        false,
+        AskConfig,
         "accept-flake-config",
-        "Whether to accept Nix configuration settings from a flake without prompting.",
+        R"(
+          Whether to accept Nix configuration settings from a flake
+          without prompting.
+
+          - `true`: accept all flake config options silently
+          - `false`: reject all flake config options silently
+          - `ask` (default): prompt interactively for each option
+        )",
         {},
         true,
         Xp::Flakes};
