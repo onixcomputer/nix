@@ -1259,6 +1259,10 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
 
     OutputPathMap finalOutputs;
 
+    /* Collect all non-deterministic outputs so --check reports them
+       all in one run instead of stopping at the first mismatch. */
+    std::vector<std::string> checkMismatches;
+
     for (auto & outputName : sortedOutputNames | std::views::reverse) {
         auto output = get(drv.outputs, outputName);
         auto scratchPath = get(scratchOutputs, outputName);
@@ -1588,16 +1592,16 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
                                 tmpDir);
                         }
 
-                        throw NotDeterministic(
-                            "derivation '%s' may not be deterministic: output %s differs from %s",
-                            store.printStorePath(drvPath),
+                        checkMismatches.push_back(fmt(
+                            "output '%s' (%s) differs from %s",
+                            outputName,
                             PathFmt(store.toRealPath(newInfo.path)),
-                            PathFmt(dst));
+                            PathFmt(dst)));
                     } else
-                        throw NotDeterministic(
-                            "derivation '%s' may not be deterministic: output %s differs",
-                            store.printStorePath(drvPath),
-                            PathFmt(store.toRealPath(newInfo.path)));
+                        checkMismatches.push_back(fmt(
+                            "output '%s' (%s) differs",
+                            outputName,
+                            PathFmt(store.toRealPath(newInfo.path))));
                 }
 
                 /* Since we verified the build, it's now ultimately trusted. */
@@ -1652,6 +1656,12 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
     checkOutputs(store, drvPath, drv.outputs, drvOptions.outputChecks, infos, drv.env);
 
     if (buildMode == bmCheck) {
+        if (!checkMismatches.empty()) {
+            std::string msg = fmt("derivation '%s' may not be deterministic:", store.printStorePath(drvPath));
+            for (auto & m : checkMismatches)
+                msg += "\n  " + m;
+            throw NotDeterministic("%s", msg);
+        }
         return {};
     }
 
