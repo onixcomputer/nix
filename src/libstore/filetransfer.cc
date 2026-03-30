@@ -729,8 +729,10 @@ struct curlFileTransfer : public FileTransfer
 
             // This seems to be the earliest libcurl callback that signals that the download is happening, so we can
             // call act().
+#if LIBCURL_VERSION_NUM >= 0x073b00
             curl_easy_setopt(req, CURLOPT_RESOLVER_START_FUNCTION, resolverCallbackWrapper);
             curl_easy_setopt(req, CURLOPT_RESOLVER_START_DATA, this);
+#endif
 
             result.data.clear();
             result.bodySize = 0;
@@ -1008,16 +1010,21 @@ struct curlFileTransfer : public FileTransfer
 
     std::thread workerThread;
 
-    const size_t maxQueueSize;
+    /* Limit the number of curl handles added to the multi object.
+       curl doesn't scale well with many inactive handles, causing
+       100% CPU and stalled downloads when querying large closures.
+       http-connections=0 means "unlimited" for libcurl total
+       connections, so fall back to hardware_concurrency for the
+       active-handle cap. */
+    const size_t maxActiveHandles;
 
     curlFileTransfer(const FileTransferSettings & settings)
         : settings(settings)
         , mt19937(rd())
-        , maxQueueSize([&]() -> std::size_t {
+        , maxActiveHandles([&]() -> std::size_t {
             if (settings.httpConnections.get())
                 return settings.httpConnections.get() * 5;
-            /* Zero means unlimited. See https://curl.se/libcurl/c/CURLMOPT_MAX_TOTAL_CONNECTIONS.html. */
-            return std::numeric_limits<std::size_t>::max();
+            return std::max(1U, std::thread::hardware_concurrency()) * 5;
         }())
     {
         static std::once_flag globalInit;
@@ -1114,8 +1121,9 @@ struct curlFileTransfer : public FileTransfer
             {
                 auto state(state_.lock());
                 while (!state->incoming.empty()) {
-                    /* Limit the number of active curl handles, since curl doesn't scale well. */
-                    if (items.size() + incoming.size() >= maxQueueSize) {
+                    /* Limit the number of active curl handles,
+                       since curl doesn't scale well. */
+                    if (items.size() + incoming.size() >= maxActiveHandles) {
                         auto t = now + std::chrono::milliseconds(100);
                         if (nextWakeup == std::chrono::steady_clock::time_point() || t < nextWakeup)
                             nextWakeup = t;
