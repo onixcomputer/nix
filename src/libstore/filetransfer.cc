@@ -909,8 +909,18 @@ struct curlFileTransfer : public FileTransfer
 
     ItemHandle enqueueItem(ref<TransferItem> item)
     {
-        if (item->request.data && item->request.uri.scheme() != "http" && item->request.uri.scheme() != "https"
-            && item->request.uri.scheme() != "s3")
+        /* Restrict to safe URL schemes. curl supports many exotic
+           protocols (dict, gopher, ldap, telnet, …) that are an
+           unnecessary attack surface for builtins.fetchurl and binary
+           cache transfers. s3:// is already converted to https before
+           reaching here. */
+        auto scheme = item->request.uri.scheme();
+        if (scheme != "http" && scheme != "https" && scheme != "ftp"
+            && scheme != "ftps" && scheme != "file")
+            throw nix::Error("URL scheme '%s' is not supported; only http, https, ftp, ftps, and file are allowed (in '%s')",
+                scheme, item->request.uri.to_string());
+
+        if (item->request.data && scheme != "http" && scheme != "https")
             throw nix::Error("uploading to '%s' is not supported", item->request.uri.to_string());
 
         {
