@@ -76,8 +76,26 @@ bool isTTY(Descriptor fd)
 
 bool isTTY()
 {
-    static const bool tty = isatty(STDERR_FILENO) && getEnv("TERM").value_or("dumb") != "dumb"
-                            && !(getEnv("NO_COLOR").has_value() || getEnv("NOCOLOR").has_value());
+    static const bool tty = [] {
+        // NO_COLOR / NOCOLOR: unconditionally disable color.
+        // https://no-color.org/
+        if (getEnv("NO_COLOR").has_value() || getEnv("NOCOLOR").has_value())
+            return false;
+
+        // CLICOLOR_FORCE / FORCE_COLOR: unconditionally enable color,
+        // even when output is not a terminal (e.g. piped).
+        // https://bixense.com/clicolors/
+        auto forceColor = getEnv("CLICOLOR_FORCE").value_or("0");
+        if (forceColor != "0" && !forceColor.empty())
+            return true;
+        auto forceColor2 = getEnv("FORCE_COLOR");
+        if (forceColor2.has_value() && *forceColor2 != "0" && !forceColor2->empty())
+            return true;
+
+        // Default: color only when stderr is a terminal and TERM is
+        // not "dumb".
+        return isatty(STDERR_FILENO) && getEnv("TERM").value_or("dumb") != "dumb";
+    }();
 
     return tty;
 }
