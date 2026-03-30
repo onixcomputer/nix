@@ -17,7 +17,8 @@ void checkCAOutput(
     const StorePath & drvPath,
     const DerivationOutput & outputSpec,
     const ValidPathInfo & info,
-    const std::string & outputName);
+    const std::string & outputName,
+    const StringPairs & env = {});
 
 /**
  * Check that outputs meets the requirements specified by the

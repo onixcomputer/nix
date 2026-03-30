@@ -1,3 +1,4 @@
+#include <optional>
 #include <queue>
 
 #include "nix/store/derivations.hh"
@@ -9,12 +10,26 @@
 
 namespace nix {
 
+static std::optional<std::string> getFixedOutputSourceUrl(const StringPairs & env)
+{
+    if (auto i = env.find("url"); i != env.end() && !i->second.empty())
+        return i->second;
+
+    if (auto i = env.find("urls"); i != env.end() && !i->second.empty()) {
+        const auto urlSeparator = i->second.find(' ');
+        return i->second.substr(0, urlSeparator);
+    }
+
+    return std::nullopt;
+}
+
 void checkCAOutput(
     StoreDirConfig & store,
     const StorePath & drvPath,
     const DerivationOutput & outputSpec,
     const ValidPathInfo & info,
-    const std::string & outputName)
+    const std::string & outputName,
+    const StringPairs & env)
 {
     std::visit(
         overloaded{
@@ -25,6 +40,16 @@ void checkCAOutput(
                 assert(info.ca);
                 auto & got = info.ca->hash;
                 if (wanted != got) {
+                    auto sourceUrl = getFixedOutputSourceUrl(env);
+                    if (sourceUrl)
+                        throw BuildError(
+                            BuildResult::Failure::HashMismatch,
+                            "hash mismatch in fixed-output derivation '%s':\n  specified: %s\n     got:    %s\n  url:       %s",
+                            store.printStorePath(drvPath),
+                            wanted.to_string(HashFormat::SRI, true),
+                            got.to_string(HashFormat::SRI, true),
+                            *sourceUrl);
+
                     throw BuildError(
                         BuildResult::Failure::HashMismatch,
                         "hash mismatch in fixed-output derivation '%s':\n  specified: %s\n     got:    %s",
@@ -117,7 +142,7 @@ void checkOutputs(
                 outputPathName(drv.name, outputName));
         }
 
-        checkCAOutput(store, drvPath, *outputSpec, info, outputName);
+        checkCAOutput(store, drvPath, *outputSpec, info, outputName, drv.env);
 
         /* Compute the closure and closure size of some output. This
            is slightly tricky because some of its references (namely

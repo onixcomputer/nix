@@ -1561,7 +1561,7 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
                     PathFmt(store.toRealPath(newInfo.path)));
                 deletePath(actualPath);
                 /* Trigger the hash-mismatch error. */
-                checkCAOutput(store, drvPath, *output, newInfo, outputName);
+                checkCAOutput(store, drvPath, *output, newInfo, outputName, drv.env);
                 unreachable();
             }
         }
