@@ -75,6 +75,8 @@ std::filesystem::path descriptorToPath(Descriptor fd)
 
 std::filesystem::path defaultTempDir()
 {
+    if (auto tempDir = getTempDirOverride())
+        return *tempDir;
     return getEnvOsNonEmpty("TMPDIR").value_or("/tmp");
 }
 

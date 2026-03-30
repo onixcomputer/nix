@@ -446,11 +446,24 @@ createTempFile(const std::filesystem::path & root, const std::filesystem::path &
 std::pair<AutoCloseFD, std::filesystem::path> createTempFile(const std::filesystem::path & prefix = "nix");
 
 /**
- * Return `TMPDIR`, or the default temporary directory if unset or empty.
- * Uses GetTempPathW on windows which respects TMP, TEMP, USERPROFILE env variables.
- * Does not resolve symlinks and the returned path might not be directory or exist at all.
+ * Return the temporary directory for Nix's internal use.
+ *
+ * Checks the `temp-dir` override set by libstore when configured, then
+ * falls back to the platform default (`TMPDIR`/`/tmp` on Unix, GetTempPathW
+ * on Windows).
  */
 std::filesystem::path defaultTempDir();
+
+/**
+ * Set a global override for `defaultTempDir()`. Called by libstore
+ * after loading the `temp-dir` setting.
+ */
+void setTempDirOverride(std::optional<std::filesystem::path> path);
+
+/**
+ * Return the current global override for `defaultTempDir()`, if any.
+ */
+std::optional<std::filesystem::path> getTempDirOverride();
 
 /**
  * Interpret `exe` as a location in the ambient file system and return

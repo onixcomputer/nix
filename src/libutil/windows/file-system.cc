@@ -67,6 +67,9 @@ openNewFileForWrite(const std::filesystem::path & path, [[maybe_unused]] mode_t 
 
 std::filesystem::path defaultTempDir()
 {
+    if (auto tempDir = getTempDirOverride())
+        return *tempDir;
+
     wchar_t buf[MAX_PATH + 1];
     DWORD len = GetTempPathW(MAX_PATH + 1, buf);
     if (len == 0 || len > MAX_PATH)
