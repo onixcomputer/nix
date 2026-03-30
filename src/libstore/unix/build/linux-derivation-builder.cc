@@ -110,6 +110,17 @@ static void setupSeccomp()
         || seccomp_rule_add(ctx, SCMP_ACT_ERRNO(ENOTSUP), SCMP_SYS(fsetxattr), 0) != 0)
         throw SysError("unable to add seccomp rule");
 
+    /* Block io_uring. The API is totally opaque to seccomp — it is
+       not possible to selectively filter individual operations — and
+       new operations are added regularly. Any of them could
+       potentially bypass sandbox restrictions (filesystem, network).
+       Return ENOSYS so programs fall back gracefully, as if the
+       kernel does not support io_uring. */
+    if (seccomp_rule_add(ctx, SCMP_ACT_ERRNO(ENOSYS), SCMP_SYS(io_uring_setup), 0) != 0
+        || seccomp_rule_add(ctx, SCMP_ACT_ERRNO(ENOSYS), SCMP_SYS(io_uring_enter), 0) != 0
+        || seccomp_rule_add(ctx, SCMP_ACT_ERRNO(ENOSYS), SCMP_SYS(io_uring_register), 0) != 0)
+        throw SysError("unable to add seccomp rule");
+
     if (seccomp_attr_set(ctx, SCMP_FLTATR_CTL_NNP, settings.allowNewPrivileges ? 0 : 1) != 0)
         throw SysError("unable to set 'no new privileges' seccomp attribute");
 
