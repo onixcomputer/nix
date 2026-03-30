@@ -1,3 +1,4 @@
+#include <optional>
 #include <queue>
 
 #include "nix/store/store-api.hh"
@@ -7,8 +8,25 @@
 
 namespace nix {
 
+static std::optional<std::string> getFixedOutputSourceUrl(const StringPairs & env)
+{
+    if (auto i = env.find("url"); i != env.end() && !i->second.empty())
+        return i->second;
+
+    if (auto i = env.find("urls"); i != env.end() && !i->second.empty()) {
+        const auto urlSeparator = i->second.find(' ');
+        return i->second.substr(0, urlSeparator);
+    }
+
+    return std::nullopt;
+}
+
 void checkCAFixedOutput(
-    StoreDirConfig & store, const StorePath & drvPath, const DerivationOutput & outputSpec, const ValidPathInfo & info)
+    StoreDirConfig & store,
+    const StorePath & drvPath,
+    const DerivationOutput & outputSpec,
+    const ValidPathInfo & info,
+    const StringPairs & env)
 {
     if (const auto * dof = std::get_if<DerivationOutput::CAFixed>(&outputSpec.raw)) {
         auto & wanted = dof->ca.hash;
@@ -17,6 +35,16 @@ void checkCAFixedOutput(
         assert(info.ca);
         auto & got = info.ca->hash;
         if (wanted != got) {
+            auto sourceUrl = getFixedOutputSourceUrl(env);
+            if (sourceUrl)
+                throw BuildError(
+                    BuildResult::Failure::HashMismatch,
+                    "hash mismatch in fixed-output derivation '%s':\n  specified: %s\n     got:    %s\n  url:       %s",
+                    store.printStorePath(drvPath),
+                    wanted.to_string(HashFormat::SRI, true),
+                    got.to_string(HashFormat::SRI, true),
+                    *sourceUrl);
+
             throw BuildError(
                 BuildResult::Failure::HashMismatch,
                 "hash mismatch in fixed-output derivation '%s':\n  specified: %s\n     got:    %s",
@@ -41,7 +69,8 @@ void checkOutputs(
     const StorePath & drvPath,
     const decltype(Derivation::outputs) & drvOutputs,
     const decltype(DerivationOptions<StorePath>::outputChecks) & outputChecks,
-    const std::map<std::string, ValidPathInfo> & outputs)
+    const std::map<std::string, ValidPathInfo> & outputs,
+    const StringPairs & env)
 {
     std::map<StorePath, const ValidPathInfo &> outputsByPath;
     for (auto & output : outputs)
@@ -56,7 +85,7 @@ void checkOutputs(
         auto * outputSpec = get(drvOutputs, outputName);
         assert(outputSpec);
 
-        checkCAFixedOutput(store, drvPath, *outputSpec, info);
+        checkCAFixedOutput(store, drvPath, *outputSpec, info, env);
 
         /* Compute the closure and closure size of some output. This
            is slightly tricky because some of its references (namely

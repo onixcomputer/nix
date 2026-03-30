@@ -20,6 +20,10 @@ nix path-info --json --json-format 2 "$path" | jq -e \
         hash: "md5-jd2L5LF5pSmvpfL/rkuYWA=="
     }'
 
+echo 'testing bad with url in error...'
+nix-build fixed.nix -A badWithUrl --no-out-link 2>"$TEST_ROOT/hash-mismatch-url.err" && fail "should fail" || true
+grepQuiet "https://example.com/some-file.tar.gz" "$TEST_ROOT/hash-mismatch-url.err"
+
 echo 'testing good...'
 nix-build fixed.nix -A good --no-out-link
 
