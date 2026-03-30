@@ -281,7 +281,7 @@ struct CmdFlakeMetadata : FlakeCommand, MixJSON
                             "%s" ANSI_BOLD "%s" ANSI_NORMAL ": %s%s",
                             prefix + (last ? treeLast : treeConn),
                             input.first,
-                            (*lockedNode)->lockedRef,
+                            (*lockedNode)->lockedRef.to_abbreviated_string(),
                             lastModifiedStr);
 
                         bool firstVisit = visited.insert(*lockedNode).second;

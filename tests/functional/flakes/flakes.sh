@@ -437,7 +437,7 @@ cmp "$flake2Dir/flake.lock" "$TEST_ROOT"/flake2.lock >/dev/null # lockfiles shou
 
 nix flake lock "$flake2Dir" --output-lock-file "$TEST_ROOT"/flake2-overridden.lock --override-input flake1 git+file://"$flake1Dir"?rev="$flake1OriginalCommit"
 expectStderr 1 cmp "$flake2Dir/flake.lock" "$TEST_ROOT"/flake2-overridden.lock
-nix flake metadata "$flake2Dir" --reference-lock-file "$TEST_ROOT"/flake2-overridden.lock | grepQuiet "$flake1OriginalCommit"
+nix flake metadata "$flake2Dir" --reference-lock-file "$TEST_ROOT"/flake2-overridden.lock | grepQuiet "${flake1OriginalCommit:0:7}"
 
 # reference-lock-file can only be used if allow-dirty is set.
 expectStderr 1 nix flake metadata "$flake2Dir" --no-allow-dirty --reference-lock-file "$TEST_ROOT"/flake2-overridden.lock

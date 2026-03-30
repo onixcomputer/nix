@@ -69,6 +69,12 @@ struct FlakeRef
     // FIXME: change to operator <<.
     std::string to_string() const;
 
+    /**
+     * Like to_string(), but abbreviates the rev hash to `len`
+     * characters for shorter user-facing output.
+     */
+    std::string to_abbreviated_string(size_t len = 7) const;
+
     fetchers::Attrs toAttrs() const;
 
     FlakeRef resolve(
