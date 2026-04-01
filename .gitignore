@@ -58,3 +58,6 @@ flake-regressions
 
 # direnv
 .direnv/
+
+# pi agent
+.pi/
