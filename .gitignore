@@ -44,3 +44,5 @@ flake-regressions
 
 # pi agent
 .pi/
+.agent/
+openspec/
