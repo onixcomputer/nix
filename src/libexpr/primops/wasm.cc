@@ -294,10 +294,7 @@ struct NixWasmInstance
     ValueId make_path(ValueId baseId, uint32_t ptr, uint32_t len)
     {
         auto & baseValue = getValue(baseId);
-        state.forceValue(baseValue, noPos);
-        if (baseValue.type() != nPath)
-            throw Error("make_path expects a path value");
-        auto base = baseValue.path();
+        auto base = wasmRealisePath(state, noPos, baseValue);
 
         auto [valueId, value] = allocValue();
         value.mkPath({base.accessor, CanonPath(span2string(memory().subspan(ptr, len)), base.path)}, state.mem);
@@ -307,10 +304,7 @@ struct NixWasmInstance
     uint32_t copy_path(ValueId valueId, uint32_t ptr, uint32_t maxLen)
     {
         auto & v = getValue(valueId);
-        state.forceValue(v, noPos);
-        if (v.type() != nPath)
-            throw Error("copy_path expects a path value");
-        auto path = v.path().path;
+        auto path = wasmRealisePath(state, noPos, v).path;
         auto s = path.abs();
         if (s.size() <= maxLen) {
             auto buf = memory().subspan(ptr, maxLen);
