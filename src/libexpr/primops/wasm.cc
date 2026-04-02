@@ -291,6 +291,68 @@ struct NixWasmInstance
         return s.size();
     }
 
+    int32_t has_context(ValueId valueId)
+    {
+        auto & value = getValue(valueId);
+        state.forceValue(value, noPos);
+        if (value.type() != nString)
+            throw Error("has_context: expected a string, got %s", showType(value));
+        NixStringContext context;
+        state.forceString(value, context, noPos, "while checking context from Wasm");
+        return context.empty() ? 0 : 1;
+    }
+
+    uint32_t get_string_context_count(ValueId valueId)
+    {
+        auto & value = getValue(valueId);
+        NixStringContext context;
+        state.forceString(value, context, noPos, "while getting context count from Wasm");
+        return context.size();
+    }
+
+    uint32_t copy_string_context(ValueId valueId, uint32_t idx, uint32_t ptr, uint32_t maxLen)
+    {
+        auto & value = getValue(valueId);
+        NixStringContext context;
+        state.forceString(value, context, noPos, "while copying string context from Wasm");
+
+        if (idx >= context.size())
+            throw Error("copy_string_context: index %d out of bounds (context has %d elements)", idx, context.size());
+
+        auto it = context.begin();
+        std::advance(it, idx);
+        auto encoded = it->to_string();
+
+        if (encoded.size() <= maxLen) {
+            auto buf = memory().subspan(ptr, maxLen);
+            memcpy(buf.data(), encoded.data(), encoded.size());
+        }
+        return encoded.size();
+    }
+
+    ValueId make_string_with_context(uint32_t strPtr, uint32_t strLen, uint32_t ctxPtr, uint32_t ctxCount)
+    {
+        auto mem = memory();
+        auto s = span2string(mem.subspan(strPtr, strLen));
+
+        // FIXME: endianness
+        struct CtxEntry { uint32_t ptr; uint32_t len; };
+        auto entries = subspan<CtxEntry>(mem.subspan(ctxPtr), ctxCount);
+
+        NixStringContext context;
+        for (auto & entry : entries) {
+            auto elemStr = span2string(mem.subspan(entry.ptr, entry.len));
+            context.insert(NixStringContextElem::parse(elemStr));
+        }
+
+        auto [valueId, value] = allocValue();
+        if (context.empty())
+            value.mkString(s, state.mem);
+        else
+            value.mkString(s, context, state.mem);
+        return valueId;
+    }
+
     ValueId make_path(ValueId baseId, uint32_t ptr, uint32_t len)
     {
         auto & baseValue = getValue(baseId);
@@ -539,6 +601,10 @@ static void regFuns(Linker & linker, bool useWasi)
     regFun(linker, "call_function", &NixWasmInstance::call_function);
     regFun(linker, "make_app", &NixWasmInstance::make_app);
     regFun(linker, "read_file", &NixWasmInstance::read_file);
+    regFun(linker, "has_context", &NixWasmInstance::has_context);
+    regFun(linker, "get_string_context_count", &NixWasmInstance::get_string_context_count);
+    regFun(linker, "copy_string_context", &NixWasmInstance::copy_string_context);
+    regFun(linker, "make_string_with_context", &NixWasmInstance::make_string_with_context);
 
     if (useWasi) {
         unwrap(linker.func_wrap(

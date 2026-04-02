@@ -7,9 +7,17 @@ name = "pure-double"
 version = "0.1.0"
 
 [[package]]
+name = "string-context"
+version = "0.1.0"
+
+[[package]]
 name = "wasi-double"
 version = "0.1.0"
 
 [[package]]
 name = "wasi-hello"
+version = "0.1.0"
+
+[[package]]
+name = "wasi-no-return"
 version = "0.1.0"
