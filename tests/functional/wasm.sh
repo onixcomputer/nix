@@ -82,4 +82,87 @@ expectStderr 1 nix eval --extra-experimental-features 'nix-command' \
     --impure --expr "builtins.wasm { path = $wasmDir/pure_double.wasm; function = \"double\"; } 1" \
     | grep -qi "wasm" || { echo "FAIL: expected feature gate error"; exit 1; }
 
+# ── String context: has_context on plain string ──
+
+echo "Testing has_context on plain string..."
+result=$(wasm_eval --expr '
+  let r = builtins.wasm {
+    path = '"$wasmDir"'/string_context.wasm;
+    function = "inspect_context";
+  } "hello";
+  in r.has_ctx
+')
+[[ "$result" = "0" ]] || { echo "FAIL: expected has_ctx=0, got $result"; exit 1; }
+
+# ── String context: has_context on string with context ──
+
+echo "Testing has_context on string with context..."
+result=$(wasm_eval --expr '
+  let
+    drv = derivation { name = "ctx-test"; system = builtins.currentSystem; builder = "/bin/sh"; };
+    s = "${drv}";
+    r = builtins.wasm {
+      path = '"$wasmDir"'/string_context.wasm;
+      function = "inspect_context";
+    } s;
+  in r.has_ctx
+')
+[[ "$result" = "1" ]] || { echo "FAIL: expected has_ctx=1, got $result"; exit 1; }
+
+# ── String context: context count ──
+
+echo "Testing context count..."
+result=$(wasm_eval --expr '
+  let
+    drv = derivation { name = "ctx-test"; system = builtins.currentSystem; builder = "/bin/sh"; };
+    s = "${drv}";
+    r = builtins.wasm {
+      path = '"$wasmDir"'/string_context.wasm;
+      function = "inspect_context";
+    } s;
+  in r.ctx_count
+')
+[[ "$result" = "1" ]] || { echo "FAIL: expected ctx_count=1, got $result"; exit 1; }
+
+# ── String context: round-trip preserves context ──
+
+echo "Testing string context round-trip..."
+result=$(wasm_eval --expr '
+  let
+    drv = derivation { name = "ctx-rt"; system = builtins.currentSystem; builder = "/bin/sh"; };
+    s = "${drv}";
+    rt = builtins.wasm {
+      path = '"$wasmDir"'/string_context.wasm;
+      function = "passthrough_string";
+    } s;
+  in builtins.getContext rt == builtins.getContext s
+')
+[[ "$result" = "true" ]] || { echo "FAIL: round-trip context mismatch"; exit 1; }
+
+# ── String context: plain string round-trip has no context ──
+
+echo "Testing plain string round-trip has no context..."
+result=$(wasm_eval --expr '
+  let
+    rt = builtins.wasm {
+      path = '"$wasmDir"'/string_context.wasm;
+      function = "passthrough_string";
+    } "plain";
+  in builtins.getContext rt == {}
+')
+[[ "$result" = "true" ]] || { echo "FAIL: plain string should have empty context"; exit 1; }
+
+# ── String context: make_string (no context) still works ──
+
+echo "Testing make_string backward compat..."
+result=$(wasm_eval --expr '
+  let
+    r = builtins.wasm {
+      path = '"$wasmDir"'/string_context.wasm;
+      function = "inspect_context";
+    } "test";
+  in r.value
+')
+[[ "$result" = '"test"' ]] || { echo "FAIL: expected '\"test\"', got $result"; exit 1; }
+
 echo "All wasm tests passed."

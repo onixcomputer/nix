@@ -32,6 +32,7 @@ pkgs.stdenv.mkDerivation {
   buildPhase = ''
     export HOME=$TMPDIR
     cargo build --release --target wasm32-unknown-unknown -p pure-double
+    cargo build --release --target wasm32-unknown-unknown -p string-context
     cargo build --release --target wasm32-wasip1 -p wasi-double
     cargo build --release --target wasm32-wasip1 -p wasi-hello
     cargo build --release --target wasm32-wasip1 -p wasi-no-return
@@ -39,6 +40,7 @@ pkgs.stdenv.mkDerivation {
   installPhase = ''
     mkdir -p $out
     cp target/wasm32-unknown-unknown/release/pure_double.wasm $out/
+    cp target/wasm32-unknown-unknown/release/string_context.wasm $out/
     cp target/wasm32-wasip1/release/wasi_double.wasm $out/
     cp target/wasm32-wasip1/release/wasi_hello.wasm $out/
     cp target/wasm32-wasip1/release/wasi_no_return.wasm $out/
