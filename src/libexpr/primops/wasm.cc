@@ -4,29 +4,6 @@
 #include <wasmtime.hh>
 #include <boost/unordered/concurrent_flat_map.hpp>
 
-/**
- * Local realisePath for wasm.cc — mirrors the static function in primops.cc
- * which is not accessible from other translation units.
- */
-static nix::SourcePath wasmRealisePath(
-    nix::EvalState & state,
-    const nix::PosIdx pos,
-    nix::Value & v)
-{
-    nix::NixStringContext context;
-    auto path = state.coerceToPath(nix::noPos, v, context, "while realising the context of a path");
-    try {
-        if (!context.empty() && path.accessor == state.rootFS) {
-            auto rewrites = state.realiseContext(context);
-            path = {path.accessor, nix::CanonPath(nix::rewriteStrings(path.path.abs(), rewrites))};
-        }
-        return path.resolveSymlinks();
-    } catch (nix::Error & e) {
-        e.addTrace(state.positions[pos], "while realising the context of path '%s'", path);
-        throw;
-    }
-}
-
 using namespace wasmtime;
 
 namespace nix {
@@ -105,34 +82,56 @@ static void regFuns(Linker & linker, bool useWasi);
 
 struct NixWasmInstancePre
 {
-    Engine & engine;
-    SourcePath wasmPath;
-    bool useWasi;
+    Engine & engine = getEngine();
+    std::string name;
+    bool useWasi = false;
     InstancePre instancePre;
 
-    NixWasmInstancePre(SourcePath _wasmPath)
-        : engine(getEngine())
-        , wasmPath(_wasmPath)
-        , useWasi(false)
-        , instancePre(({
-            // Compile the module
-            auto module = unwrap(Module::compile(engine, string2span(wasmPath.readFile())));
+    InstancePre compile(std::span<uint8_t> bytes)
+    {
+        // Compile the module
+        auto module = unwrap(Module::compile(engine, bytes));
 
-            // Auto-detect WASI by checking for wasi_snapshot_preview1 imports.
-            for (const auto & ref : module.imports())
-                if (const_cast<std::decay_t<decltype(ref)> &>(ref).module() == "wasi_snapshot_preview1") {
-                    useWasi = true;
-                    break;
-                }
+        // Auto-detect WASI by checking for wasi_snapshot_preview1 imports.
+        for (const auto & ref : module.imports())
+            if (const_cast<std::decay_t<decltype(ref)> &>(ref).module() == "wasi_snapshot_preview1") {
+                useWasi = true;
+                break;
+            }
 
-            // Create linker with appropriate WASI support
-            Linker linker(engine);
-            if (useWasi)
-                unwrap(linker.define_wasi());
-            regFuns(linker, useWasi);
+        // Create linker with appropriate WASI support
+        Linker linker(engine);
+        if (useWasi)
+            unwrap(linker.define_wasi());
+        regFuns(linker, useWasi);
 
-            unwrap(instantiate_pre(linker, module));
-        }))
+        return unwrap(instantiate_pre(linker, module));
+    }
+
+    NixWasmInstancePre(SourcePath wasmPath)
+        : name(wasmPath.baseName())
+        , instancePre(compile(string2span(wasmPath.readFile())))
+    {
+    }
+
+    NixWasmInstancePre(std::string_view wat)
+        : name("<inline wat>")
+        , instancePre([&] {
+            auto wasm = unwrap(wasmtime::wat2wasm(wat));
+            return compile(std::span<uint8_t>(wasm));
+        }())
+    {
+    }
+};
+
+template<typename T>
+struct LazyMakeRef
+{
+    ref<T> p;
+
+    template<typename... Args>
+    LazyMakeRef(Args &&... args)
+        : p(make_ref<T>(std::move(args...)))
     {
     }
 };
@@ -162,7 +161,7 @@ struct NixWasmInstance
         , wasmCtx(wasmStore)
         , instance(unwrap(pre->instancePre.instantiate(wasmCtx)))
         , memory_(getExport<Memory>("memory"))
-        , logPrefix(pre->wasmPath.baseName())
+        , logPrefix(pre->name)
     {
         wasmCtx.set_data(this);
 
@@ -196,10 +195,10 @@ struct NixWasmInstance
     {
         auto ext = instance.get(wasmCtx, name);
         if (!ext)
-            throw Error("Wasm module '%s' does not export '%s'", pre->wasmPath, name);
+            throw Error("Wasm module '%s' does not export '%s'", pre->name, name);
         auto res = std::get_if<T>(&*ext);
         if (!res)
-            throw Error("export '%s' of Wasm module '%s' does not have the right type", name, pre->wasmPath);
+            throw Error("export '%s' of Wasm module '%s' does not have the right type", name, pre->name);
         return *res;
     }
 
@@ -356,7 +355,7 @@ struct NixWasmInstance
     ValueId make_path(ValueId baseId, uint32_t ptr, uint32_t len)
     {
         auto & baseValue = getValue(baseId);
-        auto base = wasmRealisePath(state, noPos, baseValue);
+        auto base = state.realisePath(noPos, baseValue);
 
         auto [valueId, value] = allocValue();
         value.mkPath({base.accessor, CanonPath(span2string(memory().subspan(ptr, len)), base.path)}, state.mem);
@@ -366,7 +365,7 @@ struct NixWasmInstance
     uint32_t copy_path(ValueId valueId, uint32_t ptr, uint32_t maxLen)
     {
         auto & v = getValue(valueId);
-        auto path = wasmRealisePath(state, noPos, v).path;
+        auto path = state.realisePath(noPos, v).path;
         auto s = path.abs();
         if (s.size() <= maxLen) {
             auto buf = memory().subspan(ptr, maxLen);
@@ -544,7 +543,7 @@ struct NixWasmInstance
     uint32_t read_file(ValueId pathId, uint32_t ptr, uint32_t len)
     {
         auto & pathValue = getValue(pathId);
-        auto path = wasmRealisePath(state, noPos, pathValue);
+        auto path = state.realisePath(noPos, pathValue);
 
         auto contents = path.readFile();
 
@@ -621,15 +620,12 @@ static NixWasmInstance instantiateWasm(EvalState & state, const SourcePath & was
     // FIXME: make this a weak Boehm GC pointer so that it can be freed during GC.
     // FIXME: move to EvalState?
     // Note: InstancePre in Rust is Send+Sync so it should be safe to share between threads.
-    static boost::concurrent_flat_map<SourcePath, std::shared_ptr<NixWasmInstancePre>> instancesPre;
+    static boost::concurrent_flat_map<SourcePath, LazyMakeRef<NixWasmInstancePre>> instancesPre;
 
     std::shared_ptr<NixWasmInstancePre> instancePre;
 
     instancesPre.try_emplace_and_cvisit(
-        wasmPath,
-        nullptr,
-        [&](auto & i) { instancePre = i.second = std::make_shared<NixWasmInstancePre>(wasmPath); },
-        [&](auto & i) { instancePre = i.second; });
+        wasmPath, wasmPath, [&](auto & i) { instancePre = i.second.p; }, [&](auto & i) { instancePre = i.second.p; });
 
     return NixWasmInstance{state, ref(instancePre)};
 }
@@ -667,24 +663,31 @@ static void prim_wasm(EvalState & state, const PosIdx pos, Value ** args, Value 
 {
     state.forceAttrs(*args[0], pos, "while evaluating the first argument to `builtins.wasm`");
 
-    // Extract 'path' attribute
-    auto pathAttr = args[0]->attrs()->get(state.symbols.create("path"));
-    if (!pathAttr)
-        throw Error("missing required 'path' attribute in first argument to `builtins.wasm`");
-    auto wasmPath = wasmRealisePath(state, pos, *pathAttr->value);
-
-    // Check for unknown attributes
+    // Check for unknown attributes before any path/wat extraction
     for (auto & attr : *args[0]->attrs()) {
         auto name = state.symbols[attr.name];
-        if (name != "path" && name != "function")
+        if (name != "path" && name != "wat" && name != "function")
             throw Error("unknown attribute '%s' in first argument to `builtins.wasm`", name);
     }
+
+    // Extract 'path' and 'wat' attributes, validate mutual exclusivity
+    auto pathAttr = args[0]->attrs()->get(state.symbols.create("path"));
+    auto watAttr = args[0]->attrs()->get(state.symbols.create("wat"));
+
+    if (pathAttr && watAttr)
+        throw Error("'path' and 'wat' are mutually exclusive in first argument to `builtins.wasm`");
+    if (!pathAttr && !watAttr)
+        throw Error("missing required 'path' or 'wat' attribute in first argument to `builtins.wasm`");
 
     // Second argument is the value to pass to the function
     auto argValue = args[1];
 
     try {
-        auto instance = instantiateWasm(state, wasmPath);
+        auto instance = pathAttr ? instantiateWasm(state, state.realisePath(pos, *pathAttr->value))
+                                 : NixWasmInstance{
+                                       state,
+                                       make_ref<NixWasmInstancePre>(state.forceStringNoCtx(
+                                           *watAttr->value, pos, "while evaluating the 'wat' attribute"))};
 
         // Extract 'function' attribute (optional for wasi, required for non-wasi)
         std::string functionName;
@@ -724,7 +727,7 @@ static void prim_wasm(EvalState & state, const PosIdx pos, Value ** args, Value 
             auto res = func.call(instance.wasmCtx, {});
             if (!instance.resultId) {
                 unwrap(std::move(res));
-                throw Error("Wasm function '%s' from '%s' finished without returning a value", functionName, wasmPath);
+                throw Error("Wasm function '%s' from '%s' finished without returning a value", functionName, instance.pre->name);
             }
 
             auto & vRes = instance.getValue(instance.resultId);
@@ -736,9 +739,9 @@ static void prim_wasm(EvalState & state, const PosIdx pos, Value ** args, Value 
 
             auto res = instance.runFunction(functionName, {(int32_t) argId});
             if (res.size() != 1)
-                throw Error("Wasm function '%s' from '%s' did not return exactly one value", functionName, wasmPath);
+                throw Error("Wasm function '%s' from '%s' did not return exactly one value", functionName, instance.pre->name);
             if (res[0].kind() != ValKind::I32)
-                throw Error("Wasm function '%s' from '%s' did not return an i32 value", functionName, wasmPath);
+                throw Error("Wasm function '%s' from '%s' did not return an i32 value", functionName, instance.pre->name);
             auto & vRes = instance.getValue(res[0].i32());
             state.forceValue(vRes, pos);
             v = vRes;
@@ -746,7 +749,7 @@ static void prim_wasm(EvalState & state, const PosIdx pos, Value ** args, Value 
     } catch (Error & e) {
         state.error<ThrownError>("%s", Uncolored(e.message()))
             .atPos(pos)
-            .withTrace(pos, fmt("while executing the Wasm function from '%s'", wasmPath))
+            .withTrace(pos, "while executing the Wasm function")
             .debugThrow();
     }
 }
@@ -758,19 +761,29 @@ static RegisterPrimOp primop_wasm(
       Call a Wasm function with the specified argument.
 
       The first argument must be an attribute set with the following attributes:
-      - `path`: Path to the Wasm module (required)
+      - `path`: Path to the Wasm module (mutually exclusive with `wat`)
+      - `wat`: Inline WebAssembly Text format string (mutually exclusive with `path`)
       - `function`: Function name to call (required for non-WASI modules, not allowed for WASI modules)
 
+      Exactly one of `path` or `wat` must be provided.
       The second argument is the value to pass to the function.
 
       WASI mode is automatically enabled if the module imports from `wasi_snapshot_preview1`.
 
-      Example (non-WASI):
+      Example (non-WASI with path):
       ```nix
       builtins.wasm {
         path = ./foo.wasm;
         function = "fib";
       } 33
+      ```
+
+      Example (non-WASI with WAT):
+      ```nix
+      builtins.wasm {
+        wat = ''(module ...)''; 
+        function = "fib";
+      } 10
       ```
 
       Example (WASI):
