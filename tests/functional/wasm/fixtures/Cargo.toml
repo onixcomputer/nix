@@ -1,5 +1,5 @@
 [workspace]
-members = ["pure-double", "string-context", "wasi-double", "wasi-hello", "wasi-no-return"]
+members = ["pure-double", "pure-panic", "string-context", "wasi-double", "wasi-hello", "wasi-no-return", "wasi-panic"]
 resolver = "2"
 
 [profile.release]
