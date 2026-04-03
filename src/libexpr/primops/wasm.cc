@@ -744,8 +744,10 @@ static void prim_wasm(EvalState & state, const PosIdx pos, Value ** args, Value 
             v = vRes;
         }
     } catch (Error & e) {
-        e.addTrace(state.positions[pos], "while executing the Wasm function from '%s'", wasmPath);
-        throw;
+        state.error<ThrownError>("%s", Uncolored(e.message()))
+            .atPos(pos)
+            .withTrace(pos, fmt("while executing the Wasm function from '%s'", wasmPath))
+            .debugThrow();
     }
 }
 

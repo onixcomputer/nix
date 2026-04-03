@@ -75,6 +75,39 @@ echo "Testing error on WASI module without return_to_nix..."
 expectStderr 1 wasm_eval --expr "builtins.wasm { path = $wasmDir/wasi_no_return.wasm; } 1" \
     | grep -q "finished without returning a value" || { echo "FAIL: expected no-return error"; exit 1; }
 
+# ── Error propagation: tryEval catches non-WASI panic ──
+
+echo "Testing tryEval catches non-WASI WASM panic..."
+result=$(wasm_eval --expr '
+  builtins.tryEval (builtins.wasm {
+    path = '"$wasmDir"'/pure_panic.wasm;
+    function = "will_panic";
+  } 1)
+')
+echo "$result" | grep -q 'success = false' || { echo "FAIL: tryEval should catch WASM panic, got: $result"; exit 1; }
+
+# ── Error propagation: tryEval catches WASI panic ──
+
+echo "Testing tryEval catches WASI WASM panic..."
+result=$(wasm_eval --expr '
+  builtins.tryEval (builtins.wasm {
+    path = '"$wasmDir"'/wasi_panic.wasm;
+  } 1)
+')
+echo "$result" | grep -q 'success = false' || { echo "FAIL: tryEval should catch WASI panic, got: $result"; exit 1; }
+
+# ── Error propagation: panic error message preserved ──
+
+echo "Testing WASM panic error message is preserved..."
+output=$(wasm_eval_stderr --expr 'builtins.wasm { path = '"$wasmDir"'/pure_panic.wasm; function = "will_panic"; } 1' || true)
+echo "$output" | grep -q "intentional panic for testing" || { echo "FAIL: panic message not preserved in output"; exit 1; }
+
+# ── Error propagation: normal calls still work after panic test ──
+
+echo "Testing normal WASM calls still work..."
+result=$(wasm_eval --expr "builtins.wasm { path = $wasmDir/pure_double.wasm; function = \"double\"; } 21")
+[[ "$result" = "42" ]] || { echo "FAIL: expected 42 got $result after panic tests"; exit 1; }
+
 # ── Error: feature gate ──
 
 echo "Testing feature gate..."
