@@ -45,13 +45,13 @@ echo "$output" | grep -q "hello from stdout" || { echo "FAIL: expected stdout ca
 echo "$output" | grep -q "hello from stderr" || { echo "FAIL: expected stderr capture"; exit 1; }
 echo "$output" | grep -q '"done"' || { echo "FAIL: expected result 'done'"; exit 1; }
 
-# ── Error: missing path attribute ──
+# ── Error: missing path/wat attribute ──
 
-echo "Testing error on missing path..."
+echo "Testing error on missing path/wat..."
 expectStderr 1 wasm_eval --expr "builtins.wasm { function = \"f\"; } 1" \
-    | grep -q "missing required 'path'" || { echo "FAIL: expected missing path error"; exit 1; }
+    | grep -q "missing required 'path' or 'wat'" || { echo "FAIL: expected missing path/wat error"; exit 1; }
 
-# ── Error: unknown attribute ──
+# ── Error: unknown attribute (checked before path extraction) ──
 
 echo "Testing error on unknown attribute..."
 expectStderr 1 wasm_eval --expr "builtins.wasm { path = $wasmDir/pure_double.wasm; function = \"double\"; bogus = 1; } 1" \
@@ -197,5 +197,47 @@ result=$(wasm_eval --expr '
   in r.value
 ')
 [[ "$result" = '"test"' ]] || { echo "FAIL: expected '\"test\"', got $result"; exit 1; }
+
+# ── WAT: inline WebAssembly Text format ──
+
+echo "Testing inline WAT (fibonacci)..."
+result=$(wasm_eval --json --expr "
+  builtins.wasm {
+    wat = builtins.readFile $wasmDir/fib.wat;
+    function = \"fib\";
+  } 40
+")
+[[ "$result" = "165580141" ]] || { echo "FAIL: expected fib(40)=165580141, got $result"; exit 1; }
+
+# ── WAT: precompiled .wasm equivalent produces same result ──
+
+echo "Testing precompiled fib.wasm matches WAT result..."
+result=$(wasm_eval --json --expr "builtins.wasm { path = $wasmDir/fib.wasm; function = \"fib\"; } 40")
+[[ "$result" = "165580141" ]] || { echo "FAIL: expected fib(40)=165580141 from .wasm, got $result"; exit 1; }
+
+# ── WAT: mutual exclusivity with path ──
+
+echo "Testing wat + path mutual exclusivity..."
+expectStderr 1 wasm_eval --expr "
+  builtins.wasm {
+    path = $wasmDir/fib.wasm;
+    wat = \"(module)\";
+    function = \"fib\";
+  } 1
+" | grep -q "mutually exclusive" || { echo "FAIL: expected mutual exclusivity error"; exit 1; }
+
+# ── Crash fix: bad WASM path loaded twice doesn't crash ──
+
+echo "Testing crash fix: bad WASM path loaded twice..."
+mkdir -p "$TEST_ROOT"
+echo "not a wasm file" > "$TEST_ROOT/bad.wasm"
+result=$(wasm_eval --expr '
+  let
+    r1 = builtins.tryEval (builtins.wasm { path = '"$TEST_ROOT"'/bad.wasm; function = "f"; } 1);
+    r2 = builtins.tryEval (builtins.wasm { path = '"$TEST_ROOT"'/bad.wasm; function = "f"; } 1);
+  in { inherit (r1) success; second = r2.success; }
+')
+echo "$result" | grep -q 'success = false' || { echo "FAIL: first bad load should fail, got: $result"; exit 1; }
+echo "$result" | grep -q 'second = false' || { echo "FAIL: second bad load should fail (not crash), got: $result"; exit 1; }
 
 echo "All wasm tests passed."
