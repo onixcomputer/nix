@@ -478,7 +478,13 @@ struct NixWasmInstance
         if ((size_t) attrIdx >= attrs.size())
             throw Error("copy_attrname: attribute index out of bounds");
 
-        std::string_view name = state.symbols[attrs[attrIdx].name];
+        // Iterate via the layer-aware iterator instead of operator[],
+        // which is invalid on layered Bindings (e.g. derivations).
+        auto it = attrs.begin();
+        for (size_t i = 0; i < attrIdx; ++i)
+            ++it;
+
+        std::string_view name = state.symbols[it->name];
 
         if ((size_t) len != name.size())
             throw Error("copy_attrname: buffer length does not match attribute name length");
