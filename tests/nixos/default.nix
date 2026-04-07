@@ -187,6 +187,8 @@ in
 
   ca-fd-leak = runNixOSTest ./ca-fd-leak;
 
+  fod-symlink-overwrite = runNixOSTest ./fod-symlink-overwrite;
+
   content-encoding = runNixOSTest ./content-encoding.nix;
 
   functional_user = runNixOSTest ./functional/as-user.nix;
