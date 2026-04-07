@@ -1436,8 +1436,8 @@ SingleDrvOutputs DerivationBuilderImpl::registerOutputs()
 
             /* Serialise and create a fresh copy of the output to break
                any stale writable file descriptors. Copy through the
-               serialisation/deserialisation. TODO: Use copyRecursive here and
-               make use of reflinking. */
+               serialisation/deserialisation and preserve symlinks rather than
+               following them. */
             auto pathAccessor = makeFSSourceAccessor(actualPath);
             RestoreSink restoreSink{store.config->getLocalSettings().fsyncStorePaths};
             restoreSink.dstPath = tmpOutput;

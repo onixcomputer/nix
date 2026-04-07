@@ -92,10 +92,28 @@ in
         }' 2>&1
       """.strip())
 
-      # Landlock's LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET prevents a sandboxed process
-      # from connecting to an abstract socket created in an unrelated landlock domain.
-      # There's no such flag for preventing inbound connections.
-      assert "connect: Operation not permitted" in sender_output
+      # Check kernel version. LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET (ABI 6)
+      # requires kernel >= 6.12. In NixOS test VMs, the kernel is from nixpkgs,
+      # so a version check is a reliable proxy for the ABI level.
+      import re
+      kernel_version = machine.succeed("uname -r").strip()
+      # Extract major.minor from the kernel version string.
+      # Handles suffixed versions like "6.12.0-rc1" or "6.12.0-gentoo".
+      m = re.match(r"(\d+)\.(\d+)", kernel_version)
+      assert m, f"Cannot parse kernel version: {kernel_version}"
+      major = int(m.group(1))
+      minor = int(m.group(2))
+      has_landlock_v6 = (major, minor) >= (6, 12)
+      machine.log(f"Kernel {kernel_version}: landlock ABI >= 6 expected = {has_landlock_v6}")
+
+      if has_landlock_v6:
+          # Kernel supports LANDLOCK_SCOPE_ABSTRACT_UNIX_SOCKET — the sandbox
+          # must have blocked the abstract socket connect.
+          assert "connect: Operation not permitted" in sender_output, \
+              f"Landlock ABI >= 6 (kernel {kernel_version}) but connection was not blocked. Output: {sender_output}"
+          machine.log("Landlock blocked abstract socket connection as expected")
+      else:
+          machine.log(f"Kernel {kernel_version} < 6.12; skipping abstract socket assertion")
 
       # Tell the smuggler server that we're done
       machine.execute("echo done | ${pkgs.socat}/bin/socat - ABSTRACT-CONNECT:${socketName}")
