@@ -36,6 +36,21 @@
       host.succeed(f'[ -z "$(cat {service}/cgroup.procs)" ]')
       host.succeed(f'[ -n "$(cat {service}/nix-daemon/cgroup.procs)" ]')
       host.succeed(f'[ -n "$(cat {service}/nix-build-uid-*/cgroup.procs)" ]')
+
+      daemon_pids = host.succeed(f"cat {service}/nix-daemon/cgroup.procs").split()
+
+      # Restarting the service must not leave daemon workers or build-user
+      # cgroups alive. Stale workers can keep store locks around and block GC.
+      host.succeed("systemctl restart nix-daemon")
+      host.wait_until_succeeds(f'[ -z "$(cat {service}/cgroup.procs)" ]', timeout=30)
+      host.wait_until_succeeds(f'[ -n "$(cat {service}/nix-daemon/cgroup.procs)" ]', timeout=30)
+      for pid in daemon_pids:
+          host.wait_until_succeeds(f'! kill -0 {pid} 2>/dev/null', timeout=30)
+      host.wait_until_succeeds(
+          f'for f in {service}/nix-build-uid-*/cgroup.procs; do [ ! -e "$f" ] || [ -z "$(cat "$f")" ]; done',
+          timeout=30,
+      )
+      host.succeed("timeout 10 nix-store --gc --max-freed 0")
     '';
 
 }
