@@ -8,7 +8,10 @@ ConditionPathIsReadWrite=@localstatedir@/nix/daemon-socket
 
 [Service]
 ExecStart=@@bindir@/nix-daemon nix-daemon --daemon
-KillMode=process
+# The daemon forks per-client workers and build processes. Stop/restart must
+# terminate the whole service cgroup so stale workers cannot survive a restart
+# and keep store locks alive.
+KillMode=control-group
 LimitNOFILE=1048576
 TasksMax=1048576
 Delegate=yes
