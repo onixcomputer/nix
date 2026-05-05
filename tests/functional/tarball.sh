@@ -69,6 +69,16 @@ test_tarball '' cat
 test_tarball .xz xz
 test_tarball .gz gzip
 
+# Test that absolute archive member paths are extracted relative to the
+# destination, rather than outside it.
+abs_tarball="$TEST_ROOT/absolute-member.tar"
+abs_payload="$TEST_ROOT/absolute-member-payload"
+echo original > "$abs_payload"
+tar -cf "$abs_tarball" -P "$abs_payload"
+echo sentinel > "$abs_payload"
+nix store prefetch-file --json --unpack "file://$abs_tarball" > /dev/null
+[[ $(cat "$abs_payload") = sentinel ]]
+
 # Test hard links.
 # All entries in tree.tar.gz refer to the same file, and all have the same inode when unpacked by GNU tar.
 # We don't preserve the hard links, because that's an optimization we think is not worth the complexity,
