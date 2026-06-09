@@ -5,6 +5,7 @@
 #include "nix/store/path.hh"
 
 #include <chrono>
+#include <filesystem>
 #include <sys/types.h>
 
 namespace nix {
@@ -32,7 +33,7 @@ struct ActiveBuild
 
     pid_t mainPid;
     UserInfo mainUser;
-    std::optional<Path> cgroup;
+    std::optional<std::filesystem::path> cgroup;
 
     time_t startTime;
 
@@ -58,6 +59,8 @@ struct ActiveBuildInfo : ActiveBuild
 
 struct TrackActiveBuildsStore
 {
+    virtual ~TrackActiveBuildsStore() = default;
+
     struct BuildHandle
     {
         TrackActiveBuildsStore & tracker;
@@ -95,6 +98,8 @@ struct TrackActiveBuildsStore
 
 struct QueryActiveBuildsStore
 {
+    virtual ~QueryActiveBuildsStore() = default;
+
     inline static std::string operationName = "Querying active builds";
 
     virtual std::vector<ActiveBuildInfo> queryActiveBuilds() = 0;

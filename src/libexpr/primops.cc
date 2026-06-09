@@ -3571,7 +3571,7 @@ static RegisterPrimOp primop_mergeAttrsList({
       { a = 1; b = 3; c = 5; d = 6; }
       ```
     )",
-    .fun = prim_mergeAttrsList,
+    .impl = prim_mergeAttrsList,
 });
 
 static void prim_intersectAttrs(EvalState & state, const PosIdx pos, Value ** args, Value & v)
@@ -3829,7 +3829,7 @@ static RegisterPrimOp primop_filterAttrs({
 
       evaluates to `{ foo = 1; }`.
     )",
-    .fun = prim_filterAttrs,
+    .impl = prim_filterAttrs,
 });
 
 static void prim_zipAttrsWith(EvalState & state, const PosIdx pos, Value ** args, Value & v)

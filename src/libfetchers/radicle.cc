@@ -11,6 +11,7 @@
 #include "nix/store/pathlocks.hh"
 #include "nix/util/finally.hh"
 #include "nix/util/file-system.hh"
+#include "nix/util/users.hh"
 
 #include <regex>
 #include <sys/time.h>
@@ -70,7 +71,7 @@ bool isValidRadicleId(std::string_view rid)
     return parsed && *parsed == rid;
 }
 
-bool isCacheFileWithinTtl(time_t now, const struct stat & st)
+bool isRadicleCacheFileWithinTtl(const Settings & settings, time_t now, const struct stat & st)
 {
     time_t ttl = static_cast<time_t>(settings.tarballTtl);
     // Check for overflow before adding
@@ -79,22 +80,22 @@ bool isCacheFileWithinTtl(time_t now, const struct stat & st)
     return st.st_mtime + ttl > now;
 }
 
-Path getCachePath(std::string_view rid, const std::optional<std::string> & node)
+std::filesystem::path getRadicleCachePath(std::string_view rid, const std::optional<std::string> & node)
 {
     std::string key(rid);
     if (node)
         key += "@" + *node;
-    return getCacheDir() + "/radicle/" + hashString(HashAlgorithm::SHA256, key).to_string(HashFormat::Nix32, false);
+    return getCacheDir() / "radicle" / hashString(HashAlgorithm::SHA256, key).to_string(HashFormat::Nix32, false);
 }
 
 // Get the default branch from the git repository
-std::optional<std::string> getDefaultBranch(const Path & repoPath)
+std::optional<std::string> getDefaultBranch(const std::filesystem::path & repoPath)
 {
     try {
         auto [status, output] = runProgram(RunOptions{
             .program = "git",
             .lookupPath = true,
-            .args = {"-C", repoPath, "symbolic-ref", "HEAD"},
+            .args = {"-C", repoPath.string(), "symbolic-ref", "HEAD"},
         });
 
         if (status != 0)
@@ -116,7 +117,8 @@ std::optional<std::string> getDefaultBranch(const Path & repoPath)
 }
 
 // Clone a Radicle repository using rad CLI
-void cloneRadicleRepo(const std::string & rid, const std::optional<std::string> & node, const Path & destDir)
+void cloneRadicleRepo(
+    const std::string & rid, const std::optional<std::string> & node, const std::filesystem::path & destDir)
 {
     Strings args = {"clone", rid};
 
@@ -127,7 +129,7 @@ void cloneRadicleRepo(const std::string & rid, const std::optional<std::string> 
     }
 
     // Set output directory (positional argument)
-    args.push_back(destDir);
+    args.push_back(destDir.string());
 
     auto [status, output] = runProgram(radOptions(args));
     if (status != 0) {
@@ -136,13 +138,13 @@ void cloneRadicleRepo(const std::string & rid, const std::optional<std::string> 
 }
 
 // Fetch updates for a Radicle repository using git
-bool fetchRadicleRepo(const Path & repoPath, const std::string & rid)
+bool fetchRadicleRepo(const std::filesystem::path & repoPath, const std::string & rid)
 {
     try {
         auto [status, output] = runProgram(RunOptions{
             .program = "git",
             .lookupPath = true,
-            .args = {"-C", repoPath, "fetch", "--all", "--tags"},
+            .args = {"-C", repoPath.string(), "fetch", "--all", "--tags"},
         });
         if (status != 0) {
             warn("failed to fetch updates for Radicle repository '%s': %s", rid, output);
@@ -159,17 +161,17 @@ struct RadicleRepoInfo
 {
     std::string rid;
     std::optional<std::string> node;
-    Path repoPath;
+    std::filesystem::path repoPath;
 };
 
 // Template helper function to handle cache lookup, error recovery, computation, and upsert
-template<typename T>
+template<typename T, typename ComputeValue>
 T getCachedAttribute(
     const Settings & settings,
     const std::string & cacheType,
     const Hash & rev,
     const std::string & attrName,
-    std::function<T(void)> computeValue)
+    ComputeValue && computeValue)
 {
     auto cache = settings.getCache();
     Cache::Key cacheKey{cacheType, {{"rev", rev.gitRev()}}};
@@ -426,7 +428,7 @@ private:
         info.node = maybeGetStrAttr(input.attrs, "node");
 
         // Get cache path
-        info.repoPath = getCachePath(info.rid, info.node);
+        info.repoPath = getRadicleCachePath(info.rid, info.node);
 
         return info;
     }
@@ -441,13 +443,13 @@ private:
         auto repoPath = repoInfo.repoPath;
 
         // Ensure parent cache directory exists
-        auto cacheDir = dirOf(repoPath);
+        auto cacheDir = repoPath.parent_path();
         createDirs(cacheDir);
 
         // Check if repository exists (with lock to prevent race conditions)
         bool needsClone;
         {
-            PathLocks cacheDirLock({cacheDir});
+            PathLocks cacheDirLock({cacheDir.string()});
             needsClone = !pathExists(repoPath);
             // If we need to clone, create a marker to prevent concurrent clones
             if (needsClone) {
@@ -466,13 +468,13 @@ private:
         } else {
             // Check if cache is stale
             struct stat st;
-            Path fetchHeadFile = repoPath + "/.git/FETCH_HEAD";
+            auto fetchHeadFile = repoPath / ".git" / "FETCH_HEAD";
             time_t now = std::chrono::system_clock::to_time_t(std::chrono::system_clock::now());
             bool shouldFetch = false;
 
             if (stat(fetchHeadFile.c_str(), &st) == 0) {
                 // FETCH_HEAD exists, check if it's stale
-                shouldFetch = !isCacheFileWithinTtl(now, st);
+                shouldFetch = !isRadicleCacheFileWithinTtl(settings, now, st);
             } else {
                 // FETCH_HEAD missing, assume stale (fresh clone or corrupted cache)
                 shouldFetch = true;
@@ -486,14 +488,14 @@ private:
                     try {
                         setWriteTime(fetchHeadFile, now, now);
                     } catch (Error & e) {
-                        warn("failed to update mtime on '%s': %s", fetchHeadFile, e.info().msg);
+                        warn("failed to update mtime on '%s': %s", PathFmt(fetchHeadFile), e.info().msg);
                     }
                 }
             }
         }
 
         // Open the git repository
-        auto repo = GitRepo::openRepo(repoPath);
+        auto repo = GitRepo::openRepo(repoPath, {});
 
         // Determine which ref to use
         std::string ref;

@@ -99,13 +99,20 @@ void adl_serializer<ActiveBuildInfo::ProcessInfo>::to_json(json & j, const Activ
 
 ActiveBuild adl_serializer<ActiveBuild>::from_json(const json & j)
 {
+    auto cgroup = [&]() -> std::optional<std::filesystem::path> {
+        auto & value = j.at("cgroup");
+        if (value.is_null())
+            return std::nullopt;
+        return std::filesystem::path{getString(value)};
+    }();
+
     return ActiveBuild{
         .nixPid = j.at("nixPid").get<pid_t>(),
         .clientPid = j.at("clientPid").get<std::optional<pid_t>>(),
         .clientUid = j.at("clientUid").get<std::optional<uid_t>>(),
         .mainPid = j.at("mainPid").get<pid_t>(),
         .mainUser = j.at("mainUser").get<UserInfo>(),
-        .cgroup = j.at("cgroup").get<std::optional<Path>>(),
+        .cgroup = std::move(cgroup),
         .startTime = (time_t) j.at("startTime").get<double>(),
         .derivation = StorePath{getString(j.at("derivation"))},
     };
@@ -113,13 +120,14 @@ ActiveBuild adl_serializer<ActiveBuild>::from_json(const json & j)
 
 void adl_serializer<ActiveBuild>::to_json(json & j, const ActiveBuild & build)
 {
+    auto cgroup = build.cgroup ? nlohmann::json(build.cgroup->string()) : nlohmann::json(nullptr);
     j = nlohmann::json{
         {"nixPid", build.nixPid},
         {"clientPid", build.clientPid},
         {"clientUid", build.clientUid},
         {"mainPid", build.mainPid},
         {"mainUser", build.mainUser},
-        {"cgroup", build.cgroup},
+        {"cgroup", std::move(cgroup)},
         {"startTime", (double) build.startTime},
         {"derivation", build.derivation.to_string()},
     };

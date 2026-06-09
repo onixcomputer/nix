@@ -110,7 +110,6 @@ nix_sources = [ config_priv_h ] + files(
   'prefetch.cc',
   'profile.cc',
   'ps.cc',
-  'realisation.cc',
   'registry.cc',
   'repl.cc',
   'run.cc',

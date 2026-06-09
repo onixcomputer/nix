@@ -793,7 +793,7 @@ void RemoteStore::addBuildLog(const StorePath & drvPath, std::string_view log)
 std::vector<ActiveBuildInfo> RemoteStore::queryActiveBuilds()
 {
     auto conn(getConnection());
-    if (!conn->features.count(WorkerProto::featureQueryActiveBuilds))
+    if (!conn->protoVersion.features.contains(WorkerProto::featureQueryActiveBuilds))
         throw Error("remote store does not support querying active builds");
     conn->to << WorkerProto::Op::QueryActiveBuilds;
     conn.processStderr();

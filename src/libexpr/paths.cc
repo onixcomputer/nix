@@ -75,11 +75,10 @@ EvalState::mountInput(fetchers::Input & input, const fetchers::Input & originalI
     allowPath(storePath); // FIXME: should just whitelist the entire virtual store
 
     /* If the accessor is a lazy filesystem accessor (from a path
-       input), re-mount a proper store accessor so the storeFS handles
-       missing files like flake.lock correctly. For all other
-       accessors (git, github, store-backed), mount as-is to preserve
-       their display paths and behavior. */
-    if (accessor->lazyPathInput) {
+       input), re-mount a proper store accessor only after the path
+       exists in the store. Otherwise keep the lazy accessor mounted so
+       flake evaluation can read the source without forcing a copy. */
+    if (accessor->lazyPathInput && store->isValidPath(storePath)) {
         auto storeAccessor = store->requireStoreObjectAccessor(storePath);
         if (!storeAccessor->fingerprint && accessor->fingerprint)
             storeAccessor->fingerprint = accessor->fingerprint;

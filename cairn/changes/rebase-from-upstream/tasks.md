@@ -6,12 +6,12 @@
 
 ## Phase 2: Rebase and reconcile
 
-- [ ] [serial] r[nix_fork.upstream_rebase.replay] Rebase the fork-only commits onto the selected upstream target without squashing or dropping commits unless a recorded retirement decision says otherwise.
-- [ ] [serial] r[nix_fork.upstream_rebase.conflicts] Resolve conflicts with notes for every fork behavior that was preserved, replaced by upstream, or intentionally retired.
-- [ ] [serial] r[nix_fork.upstream_rebase.metadata] Review and update version, release-note, packaging, and lock-file metadata so it matches the rebased source tree.
+- [x] [serial] r[nix_fork.upstream_rebase.replay] Rebase the fork-only commits onto the selected upstream target without squashing or dropping commits unless a recorded retirement decision says otherwise.
+- [x] [serial] r[nix_fork.upstream_rebase.conflicts] Resolve conflicts with notes for every fork behavior that was preserved, replaced by upstream, or intentionally retired.
+- [x] [serial] r[nix_fork.upstream_rebase.metadata] Review and update version, release-note, packaging, and lock-file metadata so it matches the rebased source tree.
 
 ## Phase 3: Verify and close
 
-- [ ] [serial] r[nix_fork.upstream_rebase.validation] Run focused checks for conflict-touched areas, including positive and negative behavior coverage for touched fork features.
-- [ ] [serial] r[nix_fork.upstream_rebase.validation] Run the smallest viable full integration gate for this repo and record any skipped checks with owner, reason, and follow-up.
-- [ ] [serial] r[nix_fork.upstream_rebase.evidence] Record the before/after commit range, conflict summary, validation evidence, and publication instructions before archiving this Cairn.
+- [x] [serial] r[nix_fork.upstream_rebase.validation] Run focused checks for conflict-touched areas, including positive and negative behavior coverage for touched fork features.
+- [x] [serial] r[nix_fork.upstream_rebase.validation] Run the smallest viable full integration gate for this repo and record any skipped checks with owner, reason, and follow-up.
+- [x] [serial] r[nix_fork.upstream_rebase.evidence] Record the before/after commit range, conflict summary, validation evidence, and publication instructions before archiving this Cairn.

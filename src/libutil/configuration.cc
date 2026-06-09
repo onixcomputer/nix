@@ -189,7 +189,7 @@ void AbstractConfig::applyConfig(const std::string & contents, const std::string
        OptionalPathSetting, etc.) can resolve relative and tilde paths
        against the location of the config file.  $NIX_CONFIG and
        programmatic callers pass "<unknown>" — in that case we leave
-       currentConfigDir empty to disable resolution. */
+       currentConfigDir empty so relative paths resolve against cwd. */
     auto savedConfigDir = currentConfigDir;
     if (path != "<unknown>" && path != "")
         currentConfigDir = std::filesystem::path{path}.parent_path();
@@ -548,11 +548,12 @@ static AbsolutePath parseAbsolutePath(const AbstractSetting & s, const std::stri
     auto expanded = std::filesystem::path{expandTilde(str)};
 
     /* If the path is relative and we're loading from a config file,
-       resolve it against the config file's directory. */
+       resolve it against the config file's directory. Otherwise use cwd,
+       matching command-line and environment configuration semantics. */
     if (!expanded.is_absolute() && !currentConfigDir.empty())
         return canonPath(currentConfigDir / expanded);
 
-    return canonPath(expanded);
+    return absPath(expanded);
 }
 
 template<>
