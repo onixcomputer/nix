@@ -1,4 +1,5 @@
-#include <nlohmann/json.hpp>
+#include "nix/util/json-utils.hh"
+
 #include <assert.h>
 #include <stdint.h>
 #include <nlohmann/json_fwd.hpp>

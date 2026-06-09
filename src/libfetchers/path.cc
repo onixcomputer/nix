@@ -4,11 +4,18 @@
 #include "nix/fetchers/cache.hh"
 #include "nix/fetchers/fetch-to-store.hh"
 #include "nix/fetchers/fetch-settings.hh"
-#include "nix/util/posix-source-accessor.hh"
+#include "nix/util/source-accessor.hh"
 #include "nix/util/file-system.hh"
 #include "nix/util/signals.hh"
+#include "nix/util/users.hh"
 
 namespace nix::fetchers {
+
+static bool nixCacheDirIsInsideInput(const std::filesystem::path & inputRoot)
+{
+    auto cacheDir = absPath(getCacheDir());
+    return isDirOrInDir(cacheDir, inputRoot);
+}
 
 struct PathInputScheme : InputScheme
 {
@@ -160,11 +167,9 @@ struct PathInputScheme : InputScheme
                 accessor->fingerprint =
                     fmt("path:%s", info->narHash.to_string(HashFormat::SRI, true));
                 settings.getCache()->upsert(
-                    makeFetchToStoreCacheKey(
-                        input.getName(), *accessor->fingerprint, ContentAddressMethod::Raw::NixArchive, "/"),
-                    store,
-                    {},
-                    *storePath);
+                    makeSourcePathToHashCacheKey(
+                        *accessor->fingerprint, ContentAddressMethod::Raw::NixArchive, CanonPath::root),
+                    {{"hash", info->narHash.to_string(HashFormat::SRI, true)}});
                 if (!input.getLastModified())
                     input.attrs.insert_or_assign("lastModified", uint64_t(info->registrationTime));
                 return {accessor, std::move(input)};
@@ -175,9 +180,38 @@ struct PathInputScheme : InputScheme
            filesystem. The store copy is deferred until mountInput()
            calls fetchToStore(). This avoids copying large directory
            trees for evaluation that only touches a few files. */
-        auto accessor = make_ref<PosixSourceAccessor>(absPath, true);
+        auto accessor = makeFSSourceAccessor(absPath, true);
         accessor->lazyPathInput = true;
         accessor->setPathDisplay("«" + input.to_string() + "»");
+
+        /* If Nix's own cache lives inside the input, lazy copying is
+           unsafe: fetcher/eval cache writes can mutate the tree between
+           the dry-run hash and the later forced copy. Copy immediately,
+           before the first fetcher cache write, so consumers that need a
+           physical store path get a stable snapshot. */
+        if (nixCacheDirIsInsideInput(absPath)) {
+            auto lastModified = uint64_t(accessor->getLastModified().value_or(0));
+            auto copiedStorePath = fetchToStore(
+                settings,
+                store,
+                SourcePath{accessor},
+                FetchMode::Copy,
+                input.getName(),
+                ContentAddressMethod::Raw::NixArchive,
+                &defaultPathFilter);
+            store.addTempRoot(copiedStorePath);
+            auto storeAccessor = store.requireStoreObjectAccessor(copiedStorePath);
+            auto info = store.queryPathInfo(copiedStorePath);
+            auto narHashSRI = info->narHash.to_string(HashFormat::SRI, true);
+            storeAccessor->fingerprint = fmt("path:%s", narHashSRI);
+            settings.getCache()->upsert(
+                makeSourcePathToHashCacheKey(
+                    *storeAccessor->fingerprint, ContentAddressMethod::Raw::NixArchive, CanonPath::root),
+                {{"hash", narHashSRI}});
+            if (!input.getLastModified())
+                input.attrs.insert_or_assign("lastModified", lastModified);
+            return {storeAccessor, std::move(input)};
+        }
 
         /* Compute a NAR hash fingerprint so fetchToStore() can cache
            the result. This reads file contents (O(n)) but avoids the
