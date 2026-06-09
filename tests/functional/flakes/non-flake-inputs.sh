@@ -97,6 +97,51 @@ mv "$flake2Dir.tmp" "$flake2Dir"
 mv "$nonFlakeDir.tmp" "$nonFlakeDir"
 _NIX_TEST_BARF_ON_UNCACHEABLE='' nix build -o "$TEST_ROOT/result" flake3#xyzzy flake3#fnord
 
+# Check that lazy path inputs are eagerly snapshotted when Nix's own cache
+# directory lives inside the input tree. Otherwise the fetcher cache write can
+# mutate the input between dry-run hashing and the forced copy.
+cacheInsideInputRoot="$TEST_ROOT/cache-inside-input-source"
+cacheInsideFlakeRoot="$TEST_ROOT/cache-inside-input-flake"
+cacheInsideStderr="$TEST_ROOT/cache-inside-input-stderr"
+wrongNarHash="sha256-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+mkdir -p "$cacheInsideInputRoot" "$cacheInsideFlakeRoot"
+echo stable > "$cacheInsideInputRoot/payload.txt"
+cat > "$cacheInsideFlakeRoot/flake.nix" <<EOF
+{
+  inputs.snapshotSource = {
+    url = "path:$cacheInsideInputRoot";
+    flake = false;
+  };
+
+  outputs = { snapshotSource, ... }: {
+    snapshotText = builtins.readFile "\${snapshotSource}/payload.txt";
+    snapshotPath = snapshotSource.outPath;
+  };
+}
+EOF
+cacheInsideOutput=$(env XDG_CACHE_HOME="$cacheInsideInputRoot/.cache" \
+    nix eval --no-write-lock-file --raw "$cacheInsideFlakeRoot#snapshotText" 2>"$cacheInsideStderr")
+[[ $cacheInsideOutput = stable ]]
+grepQuietInverse "contents have changed" "$cacheInsideStderr"
+env XDG_CACHE_HOME="$cacheInsideInputRoot/.cache" \
+    nix eval --no-write-lock-file --raw "$cacheInsideFlakeRoot#snapshotPath" >/dev/null
+
+cat > "$cacheInsideFlakeRoot/flake.nix" <<EOF
+{
+  inputs.badSnapshotSource = {
+    url = "path:$cacheInsideInputRoot?narHash=$wrongNarHash";
+    flake = false;
+  };
+
+  outputs = { badSnapshotSource, ... }: {
+    badSnapshotPath = badSnapshotSource.outPath;
+  };
+}
+EOF
+expectStderr 102 env XDG_CACHE_HOME="$cacheInsideInputRoot/.cache" \
+    nix eval --no-write-lock-file --raw "$cacheInsideFlakeRoot#badSnapshotPath" \
+    | grepQuiet "NAR hash mismatch"
+
 # Check non-flake inputs have a sourceInfo and an outPath
 #
 # This may look redundant, but the other checks below happen in a command
