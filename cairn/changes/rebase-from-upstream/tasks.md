@@ -1,8 +1,8 @@
 ## Phase 1: Prepare the rebase
 
-- [ ] [serial] r[nix_fork.upstream_rebase.target] Fetch upstream metadata and record the exact upstream ref, upstream commit, current fork head, and fork-only commit range selected for replay.
-- [ ] [serial] r[nix_fork.upstream_rebase.checkpoint] Confirm the worktree is clean, record existing remotes, and create a recoverable local backup ref for the pre-rebase fork head.
-- [ ] [serial] r[nix_fork.upstream_rebase.baseline] Run the smallest relevant pre-rebase baseline check that currently passes, or record the existing blocker before changing history.
+- [x] [serial] r[nix_fork.upstream_rebase.target] Fetch upstream metadata and record the exact upstream ref, upstream commit, current fork head, and fork-only commit range selected for replay.
+- [x] [serial] r[nix_fork.upstream_rebase.checkpoint] Confirm the worktree is clean, record existing remotes, and create a recoverable local backup ref for the pre-rebase fork head.
+- [x] [serial] r[nix_fork.upstream_rebase.baseline] Run the smallest relevant pre-rebase baseline check that currently passes, or record the existing blocker before changing history.
 
 ## Phase 2: Rebase and reconcile
 
