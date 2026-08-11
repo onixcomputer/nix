@@ -335,7 +335,12 @@ struct NixWasmInstance
         auto s = span2string(mem.subspan(strPtr, strLen));
 
         // FIXME: endianness
-        struct CtxEntry { uint32_t ptr; uint32_t len; };
+        struct CtxEntry
+        {
+            uint32_t ptr;
+            uint32_t len;
+        };
+
         auto entries = subspan<CtxEntry>(mem.subspan(ctxPtr), ctxCount);
 
         NixStringContext context;
@@ -665,8 +670,9 @@ struct WasiLogger
     }
 };
 
-static void prim_wasm(EvalState & state, const PosIdx pos, Value ** args, Value & v)
+static void prim_wasm(EvalState & state, CallSite callSite, Value * const * args, Value & v)
 {
+    const PosIdx pos = noPos;
     state.forceAttrs(*args[0], pos, "while evaluating the first argument to `builtins.wasm`");
 
     // Check for unknown attributes before any path/wat extraction
@@ -733,7 +739,10 @@ static void prim_wasm(EvalState & state, const PosIdx pos, Value ** args, Value 
             auto res = func.call(instance.wasmCtx, {});
             if (!instance.resultId) {
                 unwrap(std::move(res));
-                throw Error("Wasm function '%s' from '%s' finished without returning a value", functionName, instance.pre->name);
+                throw Error(
+                    "Wasm function '%s' from '%s' finished without returning a value",
+                    functionName,
+                    instance.pre->name);
             }
 
             auto & vRes = instance.getValue(instance.resultId);
@@ -745,9 +754,11 @@ static void prim_wasm(EvalState & state, const PosIdx pos, Value ** args, Value 
 
             auto res = instance.runFunction(functionName, {(int32_t) argId});
             if (res.size() != 1)
-                throw Error("Wasm function '%s' from '%s' did not return exactly one value", functionName, instance.pre->name);
+                throw Error(
+                    "Wasm function '%s' from '%s' did not return exactly one value", functionName, instance.pre->name);
             if (res[0].kind() != ValKind::I32)
-                throw Error("Wasm function '%s' from '%s' did not return an i32 value", functionName, instance.pre->name);
+                throw Error(
+                    "Wasm function '%s' from '%s' did not return an i32 value", functionName, instance.pre->name);
             auto & vRes = instance.getValue(res[0].i32());
             state.forceValue(vRes, pos);
             v = vRes;
@@ -787,7 +798,7 @@ static RegisterPrimOp primop_wasm(
       Example (non-WASI with WAT):
       ```nix
       builtins.wasm {
-        wat = ''(module ...)''; 
+        wat = ''(module ...)'';
         function = "fib";
       } 10
       ```

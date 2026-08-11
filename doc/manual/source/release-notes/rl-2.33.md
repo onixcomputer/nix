@@ -310,4 +310,3 @@ This release was made possible by the following 33 contributors:
   Additionally, TCP keep-alive is now enabled on all HTTP connections, preventing
   idle connections from being silently dropped by intermediate network devices
   (NATs, firewalls, load balancers).
-

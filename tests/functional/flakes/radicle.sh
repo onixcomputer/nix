@@ -8,7 +8,7 @@ source common.sh
 
 requireGit
 
-clearStore
+clearStoreIfPossible
 
 # Enable radicle experimental feature
 sed -i 's/^experimental-features = .*/& radicle/' "$test_nix_conf"

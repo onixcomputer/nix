@@ -5,7 +5,7 @@ source common.sh
 # Note: This test uses mocks and doesn't require the actual rad CLI
 # For network-based tests with real rad CLI, see fetchRadicle-network.sh
 
-clearStore
+clearStoreIfPossible
 
 # Enable radicle experimental feature for all tests
 sed -i 's/^experimental-features = .*/& radicle/' "$test_nix_conf"
@@ -64,6 +64,8 @@ echo "Test 4: Validate input attributes"
 
 # Test 5: Security - command injection prevention
 echo "Test 5: Security validation"
+# Keep the expression single-quoted so the shell cannot run the command-substitution payload.
+# shellcheck disable=SC2016
 ! nix eval --impure --expr '
   builtins.fetchTree {
     type = "rad";
@@ -151,6 +153,7 @@ locked1=$(nix eval --impure --expr '
     input = builtins.parseFlakeRef "rad:z3gqcJUoA1n9HaHKufZs5FCSGazv5";
   in input.locked or false
 ')
+[[ "$locked1" == "false" ]] || fail "Input without rev should not be locked"
 
 # Input with rev parameter should be parseable
 nix eval --impure --expr '

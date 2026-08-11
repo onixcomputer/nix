@@ -24,7 +24,7 @@ namespace nix::fetchers {
 
 namespace {
 
-constexpr size_t MAX_DOMAIN_NAME_LENGTH = 253;  // Full FQDN, not single label (which is 63)
+constexpr size_t MAX_DOMAIN_NAME_LENGTH = 253; // Full FQDN, not single label (which is 63)
 constexpr size_t MAX_RADICLE_ID_LENGTH = 100;
 constexpr std::string_view REFS_HEADS_PREFIX = "refs/heads/";
 
@@ -33,9 +33,8 @@ static RunOptions radOptions(const Strings & args)
 {
     return {
         .program = "rad",
-        .lookupPath = true,  // Let Nix find 'rad' in PATH (the NixOS way)
-        .args = args
-    };
+        .lookupPath = true, // Let Nix find 'rad' in PATH (the NixOS way)
+        .args = args};
 }
 
 // Validate node identifier to prevent command injection
@@ -76,7 +75,7 @@ bool isRadicleCacheFileWithinTtl(const Settings & settings, time_t now, const st
     time_t ttl = static_cast<time_t>(settings.tarballTtl);
     // Check for overflow before adding
     if (st.st_mtime > std::numeric_limits<time_t>::max() - ttl)
-        return true;  // Treat overflow as "within TTL" (cache is valid)
+        return true; // Treat overflow as "within TTL" (cache is valid)
     return st.st_mtime + ttl > now;
 }
 
@@ -92,11 +91,12 @@ std::filesystem::path getRadicleCachePath(std::string_view rid, const std::optio
 std::optional<std::string> getDefaultBranch(const std::filesystem::path & repoPath)
 {
     try {
-        auto [status, output] = runProgram(RunOptions{
-            .program = "git",
-            .lookupPath = true,
-            .args = {"-C", repoPath.string(), "symbolic-ref", "HEAD"},
-        });
+        auto [status, output] = runProgram(
+            RunOptions{
+                .program = "git",
+                .lookupPath = true,
+                .args = {"-C", repoPath.string(), "symbolic-ref", "HEAD"},
+            });
 
         if (status != 0)
             return std::nullopt;
@@ -141,11 +141,12 @@ void cloneRadicleRepo(
 bool fetchRadicleRepo(const std::filesystem::path & repoPath, const std::string & rid)
 {
     try {
-        auto [status, output] = runProgram(RunOptions{
-            .program = "git",
-            .lookupPath = true,
-            .args = {"-C", repoPath.string(), "fetch", "--all", "--tags"},
-        });
+        auto [status, output] = runProgram(
+            RunOptions{
+                .program = "git",
+                .lookupPath = true,
+                .args = {"-C", repoPath.string(), "fetch", "--all", "--tags"},
+            });
         if (status != 0) {
             warn("failed to fetch updates for Radicle repository '%s': %s", rid, output);
             return false;
@@ -231,7 +232,7 @@ struct RadicleInputScheme : InputScheme
         return attrs;
     }
 
-    std::optional<Input> inputFromURL(const Settings & settings, const ParsedURL & url, bool requireTree) const override
+    std::optional<Input> inputFromURL(const ParsedURL & url, bool requireTree) const override
     {
         if (url.scheme != "rad")
             return {};
@@ -281,10 +282,10 @@ struct RadicleInputScheme : InputScheme
         if (url.authority && !attrs.contains("node"))
             attrs.emplace("node", url.authority->host);
 
-        return inputFromAttrs(settings, attrs);
+        return inputFromAttrs(attrs);
     }
 
-    std::optional<Input> inputFromAttrs(const Settings & settings, const Attrs & attrs) const override
+    std::optional<Input> inputFromAttrs(const Attrs & attrs) const override
     {
         if (getStrAttr(attrs, "type") != "rad")
             return {};
@@ -370,11 +371,12 @@ struct RadicleInputScheme : InputScheme
 
         // Checkout specific ref if requested
         if (auto ref = input.getRef()) {
-            auto [status, output] = runProgram(RunOptions{
-                .program = "git",
-                .lookupPath = true,
-                .args = {"-C", destDir.string(), "checkout", *ref},
-            });
+            auto [status, output] = runProgram(
+                RunOptions{
+                    .program = "git",
+                    .lookupPath = true,
+                    .args = {"-C", destDir.string(), "checkout", *ref},
+                });
             if (status != 0)
                 throw Error("failed to checkout ref '%s': %s", *ref, output);
         }
@@ -434,10 +436,7 @@ private:
     }
 
     std::pair<ref<SourceAccessor>, Input> getAccessorFromCommit(
-        ref<Store> store,
-        const RadicleRepoInfo & repoInfo,
-        Input && input,
-        const Settings & settings) const
+        ref<Store> store, const RadicleRepoInfo & repoInfo, Input && input, const Settings & settings) const
     {
         auto rid = repoInfo.rid;
         auto repoPath = repoInfo.repoPath;
@@ -464,7 +463,7 @@ private:
             // Use AutoDelete to clean up on failure
             AutoDelete cleanup(repoPath, true);
             cloneRadicleRepo(rid, repoInfo.node, repoPath);
-            cleanup.cancel();  // Success, don't delete
+            cleanup.cancel(); // Success, don't delete
         } else {
             // Check if cache is stale
             struct stat st;
@@ -481,7 +480,8 @@ private:
             }
 
             if (shouldFetch) {
-                Activity act(*logger, lvlTalkative, actUnknown, fmt("fetching updates for Radicle repository '%s'", rid));
+                Activity act(
+                    *logger, lvlTalkative, actUnknown, fmt("fetching updates for Radicle repository '%s'", rid));
                 bool fetchSuccess = fetchRadicleRepo(repoPath, rid);
                 // Only update FETCH_HEAD timestamp on successful fetch
                 if (fetchSuccess) {
@@ -525,24 +525,14 @@ private:
         // Get lastModified
         if (!input.attrs.contains("lastModified")) {
             auto lastModified = getCachedAttribute<uint64_t>(
-                settings,
-                "radLastModified",
-                rev,
-                "lastModified",
-                [&]() { return repo->getLastModified(rev); }
-            );
+                settings, "radLastModified", rev, "lastModified", [&]() { return repo->getLastModified(rev); });
             input.attrs.insert_or_assign("lastModified", lastModified);
         }
 
         // Get revCount
         if (!input.attrs.contains("revCount")) {
             auto revCount = getCachedAttribute<uint64_t>(
-                settings,
-                "radRevCount",
-                rev,
-                "revCount",
-                [&]() { return repo->getRevCount(rev); }
-            );
+                settings, "radRevCount", rev, "revCount", [&]() { return repo->getRevCount(rev); });
             input.attrs.insert_or_assign("revCount", revCount);
         }
 
