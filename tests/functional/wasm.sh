@@ -240,6 +240,20 @@ result=$(wasm_eval --expr '
 echo "$result" | grep -q 'success = false' || { echo "FAIL: first bad load should fail, got: $result"; exit 1; }
 echo "$result" | grep -q 'second = false' || { echo "FAIL: second bad load should fail (not crash), got: $result"; exit 1; }
 
+echo "Testing compilation of independent functions and invalid bytecode..."
+result=$(wasm_eval --file "$wasmDir/compile.nix")
+[[ "$result" = "true" ]] || { echo "FAIL: compilation checks returned $result"; exit 1; }
+
+echo "Testing string-context metadata and rejection..."
+result=$(wasm_eval --file "$wasmDir/context.nix")
+[[ "$result" = "true" ]] || { echo "FAIL: context checks returned $result"; exit 1; }
+
+echo "Testing context feature admission..."
+result=$(wasm_eval --file "$wasmDir/context-dynamic.nix" --apply 'r: r.denied')
+[[ "$result" = "true" ]] || { echo "FAIL: nested context bypassed admission"; exit 1; }
+result=$(wasm_eval --extra-experimental-features dynamic-derivations --file "$wasmDir/context-dynamic.nix" --apply 'r: r.allowed')
+[[ "$result" = "true" ]] || { echo "FAIL: admitted nested context failed"; exit 1; }
+
 echo "Testing attribute-name iteration and rejection..."
 result=$(wasm_eval --file "$wasmDir/attrname.nix")
 [[ "$result" = "true" ]] || { echo "FAIL: attribute-name checks returned $result"; exit 1; }

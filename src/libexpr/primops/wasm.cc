@@ -161,6 +161,11 @@ struct NixWasmInstance
     uint32_t attrNameIndex = 0;
     Bindings::iterator attrNameCursor;
 
+    // Contexts are immutable and rooted through values. Retain only the last
+    // successful parse, including its feature checks, for repeated probes.
+    const Value::StringWithContext::Context * lastContext = nullptr;
+    size_t lastContextSize = 0;
+
     NixWasmInstance(EvalState & _state, ref<NixWasmInstancePre> _pre)
         : state(_state)
         , pre(_pre)
@@ -297,23 +302,32 @@ struct NixWasmInstance
         return s.size();
     }
 
+    size_t getContextSize(const Value & value)
+    {
+        auto context = value.context();
+        if (context != lastContext) {
+            NixStringContext parsed;
+            copyContext(value, parsed);
+            lastContextSize = parsed.size();
+            lastContext = context;
+        }
+        return lastContextSize;
+    }
+
     int32_t has_context(ValueId valueId)
     {
         auto & value = getValue(valueId);
         state.forceValue(value, noPos);
         if (value.type() != nString)
             throw Error("has_context: expected a string, got %s", showType(value));
-        NixStringContext context;
-        state.forceString(value, context, noPos, "while checking context from Wasm");
-        return context.empty() ? 0 : 1;
+        return getContextSize(value) ? 1 : 0;
     }
 
     uint32_t get_string_context_count(ValueId valueId)
     {
         auto & value = getValue(valueId);
-        NixStringContext context;
-        state.forceString(value, context, noPos, "while getting context count from Wasm");
-        return context.size();
+        state.forceString(value, noPos, "while getting context count from Wasm");
+        return getContextSize(value);
     }
 
     uint32_t copy_string_context(ValueId valueId, uint32_t idx, uint32_t ptr, uint32_t maxLen)

@@ -116,3 +116,85 @@ The ABI, attribute order, and lazy values remain unchanged.
 This change does not cache file contents or reuse live Wasm instances.
 Those changes need separate memory and isolation evidence.
 No daemon, sandbox, or kernel behavior changes, so direct evaluator tests cover this boundary without a NixOS VM.
+
+## String-context metadata (second pass)
+
+`has_context` and `get_string_context_count` share a one-entry cache of the last successfully parsed context within each Wasm instance.
+Previously, both calls decoded every context entry into a temporary `std::set`.
+Nickel calls `has_context` for each input string to preserve opaque Nix dependencies.
+
+A cache miss parses the context and preserves its feature-admission checks.
+A hit returns the parsed count without new allocations.
+The immutable context remains rooted through the instance value table.
+A different context, including an empty context, replaces the cache entry.
+A failed parse does not update the cache.
+Context creation, context copying, feature admission, and the Wasm ABI remain unchanged.
+
+A rejected direct-metadata shortcut bypassed `dynamic-derivations` admission for output names that encode nested references.
+`context-dynamic.nix` now covers both rejection and explicit admission of those references.
+
+`context.nix` covers empty contexts, all three reference kinds, multiple outputs, duplicate removal, and round-trip preservation.
+It also rejects non-string inputs and malformed context entries.
+The malformed-entry test still passes through `make_string_with_context`, which retains its entry validation.
+
+Run the real Nickel context workload with each binary:
+
+```sh
+"$NIX_BINARY" eval --json --impure \
+  --extra-experimental-features 'nix-command wasm-builtin' \
+  --file tests/functional/wasm/nickel-context-bench.nix \
+  --apply "f: f { plugin = $NICKEL_PLUGIN; valueCount = $VALUE_COUNT; }"
+```
+
+Each input string carries 256 output references by default.
+The workload asserts list equality and verifies the first and last output contexts.
+It returns the number of input strings.
+
+### Context-cache measurements (2026-09-06)
+
+The final cache candidate passed 215 functional tests, with nine skips, plus the NixOS VM and real Nickel integration controls.
+The VM included enabled and disabled `dynamic-derivations` cases.
+
+The 10,000-string workload used 256 references per string, one warmup, and five measured processes per binary.
+The baseline mean was 8.086 ± 1.092 seconds. The cache mean was 5.010 ± 0.707 seconds.
+A reverse-order repeat measured 5.480 ± 1.992 seconds for the cache and 5.805 ± 0.909 seconds for the baseline.
+The uncertainties are sample standard deviations.
+These shared-host measurements had substantial variance and do not establish a stable speedup ratio.
+
+- Baseline: `/nix/store/j7d4vg5bady00wp2h022cqq4hwrhvivj-nix-2.36.0/bin/nix`
+- Final cache: `/nix/store/6rwk5j1qqk7na4la5m2ka34p734braxa-nix-2.36.0/bin/nix`
+- Plugin: `/nix/store/fyr9a0wa7qarrqxc0035rak8ls7zfb1l-nix-wasm-plugins-0.1.0/nickel_plugin.wasm`
+
+Earlier direct-metadata timings do not describe this final implementation.
+The cache improves repeated probes of one shared context, not arbitrary alternation between distinct contexts.
+It retains one pointer and one count, not a copy of the parsed entries.
+
+### Rejected parallel-compilation candidate
+
+The second pass also evaluated Wasmtime 40.0.2 with `parallel-compilation` enabled.
+Its pinned `engine.rs` uses a global Rayon pool when that feature is available.
+The C API exposes an on/off switch but no pool-size control.
+
+The candidate passed functional and VM checks, but its resource cost blocked adoption.
+The 20,000-attribute Nickel workload changed from 2.238 to 1.712 seconds of mean elapsed time.
+Mean system CPU time changed from 0.227 to 10.487 seconds.
+A small-module probe changed from 166.4 to 702.6 milliseconds of mean elapsed time.
+That probe used the same Nix binary with the candidate library through `LD_LIBRARY_PATH`.
+The host exposed 32 CPUs, and the runs had substantial timing variance.
+These observations do not establish a stable speedup ratio.
+
+The final package keeps serial compilation.
+A future parallel implementation needs a bounded worker pool and small-module controls before default adoption.
+File-read caching and live-instance reuse remain outside this change.
+
+### NixOS VM checks
+
+`hydraJobs.tests.wasm` runs the evaluator as an unprivileged user on a two-CPU VM.
+It covers module compilation, attribute names, string contexts, and WASI output.
+It also checks single-CPU operation, invalid bytecode, invalid host-call inputs, and feature-gate rejection.
+`compile.nix` supplies 1,024 independent functions and a module with an invalid result type.
+
+```sh
+nix build .#hydraJobs.tests.wasm --no-link -L
+nix build .#nix-functional-tests --no-link -L
+```

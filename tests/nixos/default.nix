@@ -212,6 +212,8 @@ in
 
   storeRemount = runNixOSTest ./store-remount.nix;
 
+  wasm = runNixOSTest ./wasm.nix;
+
   upgrade-nix = runNixOSTest {
     imports = [ ./upgrade-nix.nix ];
     upgrade-nix.oldNix = nixComponents.nix-cli;

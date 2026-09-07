@@ -29,6 +29,8 @@ rust.packages.stable.rustPlatform.buildRustPackage (finalAttrs: {
     "--package"
     "wasmtime-c-api"
     "--no-default-features"
+    # Keep compilation serial. The default Rayon pool regressed small modules
+    # and CPU cost. See tests/functional/wasm/README.md for the measurements.
     "--features cranelift,wasi,pooling-allocator,wat,demangle,gc-null"
   ];
 
