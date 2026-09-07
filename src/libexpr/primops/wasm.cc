@@ -154,6 +154,13 @@ struct NixWasmInstance
 
     std::string logPrefix;
 
+    // Nickel requests names in index order after copy_attrset. Retain one
+    // layer-aware cursor instead of restarting the merge for every name.
+    // The values table roots the owner for the lifetime of this instance.
+    ValueId attrNameOwner = 0;
+    uint32_t attrNameIndex = 0;
+    Bindings::iterator attrNameCursor;
+
     NixWasmInstance(EvalState & _state, ref<NixWasmInstancePre> _pre)
         : state(_state)
         , pre(_pre)
@@ -483,13 +490,19 @@ struct NixWasmInstance
         if ((size_t) attrIdx >= attrs.size())
             throw Error("copy_attrname: attribute index out of bounds");
 
-        // Iterate via the layer-aware iterator instead of operator[],
-        // which is invalid on layered Bindings (e.g. derivations).
-        auto it = attrs.begin();
-        for (size_t i = 0; i < attrIdx; ++i)
-            ++it;
+        // Arbitrary callers can switch sets, repeat an index, or move backward.
+        // Only forward requests for the same owner reuse the current position.
+        if (attrNameOwner != valueId || attrIdx < attrNameIndex) {
+            attrNameOwner = valueId;
+            attrNameIndex = 0;
+            attrNameCursor = attrs.begin();
+        }
+        while (attrNameIndex < attrIdx) {
+            ++attrNameCursor;
+            ++attrNameIndex;
+        }
 
-        std::string_view name = state.symbols[it->name];
+        std::string_view name = state.symbols[attrNameCursor->name];
 
         if ((size_t) len != name.size())
             throw Error("copy_attrname: buffer length does not match attribute name length");

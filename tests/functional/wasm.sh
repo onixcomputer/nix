@@ -240,4 +240,8 @@ result=$(wasm_eval --expr '
 echo "$result" | grep -q 'success = false' || { echo "FAIL: first bad load should fail, got: $result"; exit 1; }
 echo "$result" | grep -q 'second = false' || { echo "FAIL: second bad load should fail (not crash), got: $result"; exit 1; }
 
+echo "Testing attribute-name iteration and rejection..."
+result=$(wasm_eval --file "$wasmDir/attrname.nix")
+[[ "$result" = "true" ]] || { echo "FAIL: attribute-name checks returned $result"; exit 1; }
+
 echo "All wasm tests passed."
